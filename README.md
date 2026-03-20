@@ -27,6 +27,40 @@ The goal is to turn messy social media posts into **clean calendar events**.
 
 ## How It Works
 
+## Current Status
+
+Working prototype for extracting event **dates** from flyer images using OCR and post-processing.
+
+### Example
+
+Raw OCR output:02/17/2077
+
+
+Extracted:
+
+2/17/2077
+
+
+Normalized:
+
+2/17/26
+
+
+Actual flyer text:
+
+TUES 2/17/26 7 PM
+
+### Key Findings
+
+- Best results come from cropping the date region and using grayscale preprocessing
+- OCR is generally accurate but frequently misreads the year
+- Regex + post-processing significantly improves reliability
+
+### Limitations
+
+- Currently validated on a single flyer
+- Year normalization is heuristic-based
+- Time and location extraction not yet implemented
 
 ### Basic pipeline
 Instagram Post
@@ -88,15 +122,3 @@ This project explores how to automatically extract structured event data from:
 - flyer images
 
 and turn it into something usable for **calendars and datasets**.
-
----
-
-## Notes
-
-This README is designed to:
-
-- explain the project in **~10 seconds**
-- be **easy for recruiters to skim**
-- still show the **pipeline thinking**
-
-The longer design explanation can live separately as a **design document**.
