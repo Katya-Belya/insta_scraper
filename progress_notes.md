@@ -84,3 +84,8 @@ Key insight:
 - Build reusable extraction function (`extract_numeric_date`)
 - Run pipeline across multiple images
 - Support text-based date formats (e.g., "MARCH 27th")
+
+## Known Limitations
+- Does not yet handle month-name dates (e.g., "MARCH 27th")
+- Crop logic is not fully generalized across flyers
+- Year normalization is heuristic and not automated
