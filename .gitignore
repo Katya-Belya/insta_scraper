@@ -9,3 +9,6 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Raw Data
+data/raw_images/

@@ -55,6 +55,8 @@ Example:
 RAW OCR: 02/17/2077  
 NORMALIZED: 2/17/26   (human eye balling)
 
+The key improvement was isolating the date region and constraining OCR to a narrow character set, which turned noisy text into a consistent, parseable format.
+
 ---
 
 ## Current Status
@@ -62,9 +64,16 @@ NORMALIZED: 2/17/26   (human eye balling)
 - OCR is stable but imperfect
 - Post-processing improves accuracy
 
----
+## Session Summary 3/24/2026
 
-## Next Steps
-- Test on multiple flyers
-- Improve year normalization
-- Extend to time extraction
+- Implemented region-based OCR (top/middle/bottom)
+- Identified best crop for cherry_blossom_market.jpeg
+- Determined grayscale preprocessing is most reliable
+- Built working numeric date extraction prototype
+- Began restructuring notebook with markdown sections
+
+## Next steps:
+- clean notebook structure
+- build reusable extraction function
+- run pipeline across multiple images
+- support text-based date formats
