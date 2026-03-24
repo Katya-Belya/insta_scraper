@@ -1,13 +1,13 @@
 # Progress Notes
 
-## Phase 1: Feasibility (OCR works)
+## Phase 1: Feasibility (OCR Works)
 - Set up Tesseract and environment
 - Ran OCR on full images (too noisy)
 - Introduced region-based cropping
 - Successfully extracted rough date text
 
 Example:
-RAW OCR: Pa 3/17/3679!
+RAW OCR: Pa 3/17/3679!  
 DATE FOUND: 3/17/36
 
 ---
@@ -17,6 +17,7 @@ DATE FOUND: 3/17/36
 - Identified best crop:
   (120, 930, 980, 1080)
 - Result: reduced noise and improved OCR consistency
+
 ---
 
 ## Phase 3: Preprocessing Experiments
@@ -48,14 +49,15 @@ Finding:
 ---
 
 ## Phase 6: Post-processing
-- Identified consistent OCR error in year field
-- Implemented normalization step to correct misread years
+- Identified consistent OCR errors in year field
+- Applied normalization to correct misread years
 
 Example:
 RAW OCR: 02/17/2077  
-NORMALIZED: 2/17/26   (human eye balling)
+NORMALIZED: 2/17/26  (manual correction for now)
 
-The key improvement was isolating the date region and constraining OCR to a narrow character set, which turned noisy text into a consistent, parseable format.
+Key insight:
+- Isolating the date region and constraining OCR to a narrow character set significantly improved reliability.
 
 ---
 
@@ -64,16 +66,21 @@ The key improvement was isolating the date region and constraining OCR to a narr
 - OCR is stable but imperfect
 - Post-processing improves accuracy
 
-## Session Summary 3/24/2026
+---
 
+## OCR Experiment Summary (Mar 24)
 - Implemented region-based OCR (top/middle/bottom)
-- Identified best crop for cherry_blossom_market.jpeg
-- Determined grayscale preprocessing is most reliable
-- Built working numeric date extraction prototype
-- Began restructuring notebook with markdown sections
+- Confirmed date location varies across flyers
+- Tuned crop boxes for improved accuracy
+- Identified grayscale preprocessing as most reliable
+- Built regex-based numeric date extraction
+- Observed OCR errors (e.g., incorrect year parsing)
+- Began restructuring notebook into logical sections
 
-## Next steps:
-- clean notebook structure
-- build reusable extraction function
-- run pipeline across multiple images
-- support text-based date formats
+---
+
+## Next Steps
+- Clean notebook structure (markdown + cell ordering)
+- Build reusable extraction function (`extract_numeric_date`)
+- Run pipeline across multiple images
+- Support text-based date formats (e.g., "MARCH 27th")
