@@ -1,8 +1,22 @@
 # insta_scraper
 
-Python project that converts **Instagram event flyers into structured event data** using image preprocessing, OCR, and pattern extraction.
+Python project that converts **Instagram event flyers into structured event data**
+using image preprocessing, OCR, and pattern extraction.
 
-The goal is to turn messy social media posts into **clean calendar events**.
+The goal is to turn messy social media posts into clean calendar events.
+
+---
+
+## Example Workflow
+
++-------------------+      +----------------+      +----------------------+
+| Instagram Flyer   | ---> | OCR Extraction | ---> | Structured Event     |
+| (image)           |      |                |      | Date: 2026-02-17     |
+|                   |      | TUES 2/17/2077 |      | Time: 7:00 PM        |
+|                   |      |                |      | Venue: ...           |
++-------------------+      +----------------+      +----------------------+
+
+*(Replace this diagram with screenshots once available.)*
 
 **Example output formats**
 
