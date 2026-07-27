@@ -156,9 +156,3 @@ Important details may be divided between:
 - flyer images,
 - account metadata,
 - and external ticket links.
-
-<<<<<<< HEAD
-and turn it into something usable for **calendars and datasets**.
-=======
-This project explores how to extract that information and transform it into structured records that can be searched, reviewed, and exported.
->>>>>>> 4d281ed (Organize repository and document OCR prototype)
