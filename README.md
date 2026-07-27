@@ -1,138 +1,164 @@
-# insta_scraper
+# Instagram Event Scraper
 
-Python project that converts **Instagram event flyers into structured event data**
-using image preprocessing, OCR, and pattern extraction.
+A Python project for converting Instagram event flyers into structured event data using image preprocessing, optical character recognition (OCR), pattern matching, and post-processing.
 
-The goal is to turn messy social media posts into clean calendar events.
+The long-term goal is to turn difficult-to-search social media posts into clean, calendar-ready event records.
 
----
+## Example Flyer
 
-## Example Workflow
+![Cherry Blossom Market](data/sample/cherry_blossom_market.jpeg)
 
-+-------------------+      +----------------+      +----------------------+
-| Instagram Flyer   | ---> | OCR Extraction | ---> | Structured Event     |
-| (image)           |      |                |      | Date: 2026-02-17     |
-|                   |      | TUES 2/17/2077 |      | Time: 7:00 PM        |
-|                   |      |                |      | Venue: ...           |
-+-------------------+      +----------------+      +----------------------+
+*Sample flyer used during OCR development.*
 
-*(Replace this diagram with screenshots once available.)*
-
-**Example output formats**
-
-- CSV  
-- ICS (Google Calendar compatible)
-
----
-
-## What This Project Does
-
-- Takes Instagram event posts (captions + flyer images)
-- Extracts information such as:
-  - date
-  - time
-  - venue
-  - price
-- Converts the extracted data into structured events
-- Sorts events chronologically
-- Exports them to a calendar-friendly format
-
----
-
-## How It Works
 
 ## Current Status
 
-Working prototype for extracting event **dates** from flyer images using OCR and post-processing.
+The project currently includes a working prototype for extracting and normalizing event dates from flyer images.
+
+The prototype:
+
+- loads a flyer image,
+- crops a likely date region,
+- applies grayscale image preprocessing,
+- extracts text with Tesseract OCR,
+- detects date patterns with regular expressions,
+- and corrects likely OCR errors through post-processing.
 
 ### Example
 
-Raw OCR output:02/17/2077
+Using the sample flyer in `data/sample/cherry_blossom_market.jpeg`
 
+![Cherry Blossom Market](data/sample/cherry_blossom_market.jpeg)
 
-Extracted:
+**Raw OCR result**
 
-2/17/2077
+```text
+FRIDAY, MARCH 27th
+4PM - 8PM
+```
 
+**Extracted date**
 
-Normalized:
+```text
+March 27
+```
 
-2/17/26
+**Normalized date**
 
+```text
+2026-03-27
+```
 
-Actual flyer text:
+The normalization step converts extracted dates into a consistent machine-readable format suitable for downstream processing and calendar export.
 
-TUES 2/17/26 7 PM
+## Key Findings
 
-### Key Findings
+- Cropping the date region improves OCR accuracy.
+- Grayscale preprocessing generally produces better results than processing the full-color flyer directly.
+- Tesseract often identifies the month and day correctly while misreading the year.
+- Regular expressions and post-processing substantially improve the usefulness of raw OCR output.
 
-- Best results come from cropping the date region and using grayscale preprocessing
-- OCR is generally accurate but frequently misreads the year
-- Regex + post-processing significantly improves reliability
+## Current Limitations
 
-### Limitations
+- The pipeline has only been validated on a small number of flyers.
+- Year correction is currently heuristic-based.
+- Time, venue, price, and event-name extraction are not yet implemented as a complete pipeline.
+- Instagram caption ingestion is planned but not yet implemented.
+- CSV and ICS export are planned but not yet implemented.
 
-- Currently validated on a single flyer
-- Year normalization is heuristic-based
-- Time and location extraction not yet implemented
+## Planned Pipeline
 
-### Basic pipeline
-Instagram Post
-(caption + image)
-↓
-Caption parsing
-↓
-OCR on flyer image
-↓
-Event data extraction
-↓
-Confidence scoring
-↓
-CSV / ICS export
-Low-confidence results are flagged for **manual review**.
+```text
+Instagram post
+(caption + flyer image)
+        ↓
+Caption and image ingestion
+        ↓
+Image preprocessing
+        ↓
+OCR
+        ↓
+Event-field extraction
+        ↓
+Normalization and confidence scoring
+        ↓
+Manual review of low-confidence results
+        ↓
+CSV or ICS export
+```
 
----
+## Planned Output Fields
+
+The completed pipeline may extract fields such as:
+
+- event name
+- date
+- start time
+- end time
+- venue
+- address
+- price
+- source account
+- confidence score
+
+Potential export formats include:
+
+- CSV
+- ICS for calendar applications such as Google Calendar
 
 ## Project Structure
 
+```text
 insta_scraper/
-│
 ├── data/
-│ └── raw_images/
-│
+│   ├── processed/
+│   ├── raw/
+│   └── sample/
+│       └── cherry_blossom_market.jpeg
 ├── notebooks/
-│ ├── 01_ocr_smoke_test.ipynb
-│ └── 02_region_ocr_test.ipynb
-│
+│   ├── 01_ocr_smoke_test.ipynb
+│   └── 02_region_ocr_test.ipynb
 ├── src/
-│
-├── README.md
+│   └── ocr_utils.py
+├── .gitignore
+├── LICENSE
 ├── progress_notes.md
-└── .gitignore
+└── README.md
+```
 
+### Folder Purposes
 
----
+- `data/sample/` contains permanent demonstration images.
+- `data/raw/` is intended for newly ingested, unprocessed images.
+- `data/processed/` is intended for cropped or preprocessed image outputs.
+- `notebooks/` contains exploratory OCR experiments.
+- `src/` contains reusable Python functions as the prototype is gradually refactored.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10 or later
 - Tesseract OCR
+- Python packages currently used by the notebooks, including:
+  - `pytesseract`
+  - `opencv-python`
+  - `Pillow`
+  - `matplotlib`
 
-Install dependencies:
-
-
-pip install -r requirements.txt
-
-
----
+A reproducible dependency file will be added as the prototype is formalized.
 
 ## Why This Project Exists
 
-Event information on Instagram is often **hard to search or organize**.
+Event information posted on Instagram is often difficult to search, sort, and transfer into a calendar.
 
-This project explores how to automatically extract structured event data from:
+Important details may be divided between:
 
-- captions
-- flyer images
+- captions,
+- flyer images,
+- account metadata,
+- and external ticket links.
 
+<<<<<<< HEAD
 and turn it into something usable for **calendars and datasets**.
+=======
+This project explores how to extract that information and transform it into structured records that can be searched, reviewed, and exported.
+>>>>>>> 4d281ed (Organize repository and document OCR prototype)
