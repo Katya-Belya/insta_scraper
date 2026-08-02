@@ -11,5 +11,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Raw Data
-data/raw_images/
+# Ingested and intermediate flyer data.
+# Never commit scraped images: they are third-party content and may identify
+# event organizers and attendees. Only data/sample/ is tracked.
+# Ignore directory *contents* (not the directories) so .gitkeep can be re-included.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep

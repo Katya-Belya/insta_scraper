@@ -28,8 +28,6 @@ The prototype:
 
 Using the sample flyer in `data/sample/cherry_blossom_market.jpeg`
 
-![Cherry Blossom Market](data/sample/cherry_blossom_market.jpeg)
-
 **Raw OCR result**
 
 ```text
@@ -121,9 +119,10 @@ insta_scraper/
 ├── src/
 │   └── ocr_utils.py
 ├── .gitignore
+├── CHANGELOG.md
 ├── LICENSE
-├── progress_notes.md
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
 ### Folder Purposes
@@ -134,17 +133,19 @@ insta_scraper/
 - `notebooks/` contains exploratory OCR experiments.
 - `src/` contains reusable Python functions as the prototype is gradually refactored.
 
+`data/raw/` and `data/processed/` are gitignored. Ingested flyers are
+third-party content and may identify event organizers and attendees, so they
+stay local; only `data/sample/` is tracked.
+
 ## Requirements
 
 - Python 3.10 or later
-- Tesseract OCR
-- Python packages currently used by the notebooks, including:
-  - `pytesseract`
-  - `opencv-python`
-  - `Pillow`
-  - `matplotlib`
+- The Tesseract OCR engine, installed separately and available on `PATH`
+- Python packages listed in `requirements.txt`
 
-A reproducible dependency file will be added as the prototype is formalized.
+```bash
+pip install -r requirements.txt
+```
 
 ## Why This Project Exists
 
