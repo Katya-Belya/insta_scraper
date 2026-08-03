@@ -14,3 +14,7 @@ pytesseract==0.3.13
 
 # Notebook environment
 jupyterlab==4.5.5
+
+# Development: test runner, and the hook runner that strips notebook outputs
+pytest==9.1.1
+pre-commit==4.6.1
