@@ -1,0 +1,19 @@
+# Strips Jupyter notebook outputs before they can be committed.
+#
+# This exists because rendered flyer images were previously published to this
+# repository as base64 notebook outputs and had to be removed with a history
+# rewrite. Notebook outputs are regenerable; keeping them out of Git avoids
+# both the privacy exposure and multi-megabyte binary diffs.
+#
+# One-time setup, per clone:
+#   pip install pre-commit
+#   pre-commit install
+#
+# To keep a specific cell's output (e.g. a final result worth reviewing in the
+# diff), add "keep_output": true to that cell's metadata.
+
+repos:
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.9.1
+    hooks:
+      - id: nbstripout

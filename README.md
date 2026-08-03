@@ -119,6 +119,7 @@ insta_scraper/
 ├── src/
 │   └── ocr_utils.py
 ├── .gitignore
+├── .pre-commit-config.yaml
 ├── CHANGELOG.md
 ├── LICENSE
 ├── README.md
@@ -146,6 +147,23 @@ stay local; only `data/sample/` is tracked.
 ```bash
 pip install -r requirements.txt
 ```
+
+## Notebook Hygiene
+
+**Clear all notebook outputs before committing.** Rendered flyer images are
+stored inside `.ipynb` files as base64 data, so committing outputs publishes
+the images themselves along with the code.
+
+A `pre-commit` hook enforces this automatically. Set it up once per clone:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+After that, `nbstripout` strips outputs from any notebook you commit. To keep
+one cell's output — a final result worth seeing in the diff — add
+`"keep_output": true` to that cell's metadata.
 
 ## Why This Project Exists
 
