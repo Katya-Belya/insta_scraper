@@ -1,0 +1,9 @@
+filename,expected_date,extracted_date,correct,raw_ocr_text,failure_stage,notes
+across_life_worlds.jpg,2026-08-09,,,,,
+beach_day.jpg,2026-08-15,,,,,
+cuban_social.jpg,2026-04-25,,,,,
+dc_flea.jpg,2026-04-26,,,,,
+gogo_groovers.jpg,2026-04-18,,,,,
+rooftop_punk_shows.jpg,2026-08-12,,,,,
+tommy_c.jpg,2026-08-08,,,,,
+august_happy_hour.jpg,2026-08-04,,,,,

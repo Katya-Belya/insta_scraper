@@ -1,0 +1,9 @@
+filename,expected_event_name,expected_event_date,date_location,expected_time,expected_venue,difficulty,notes
+across_life_worlds.jpg,Across Life-Worlds Exhibition Opening,2026-08-09,right-side text block,1:00 PM,Jewish Museum of Maryland,Easy,Clean typography and high contrast
+beach_day.jpg,Sun's Out Buns Out Beach Day,2026-08-15,bottom center under title,12:00 PM,Mayo Beach Park,Medium,Contains secondary parking-pass date on August 13
+cuban_social.jpg,Lolo's Cuban Social Club,2026-04-25,bottom center,8:00 PM,El Golfo Restaurant,Medium,Large decorative title dominates flyer
+dc_flea.jpg,DC Flea Vintage Pop-Up Market,2026-04-26,directly below title,12:00 PM,Aslin DC,Easy,Date embedded in title banner
+gogo_groovers.jpg,DC Go-Go Groovers Run/Walk,2026-04-18,center of flyer,11:00 AM,The Big Chair,Easy,Simple centered text layout
+rooftop_punk_shows.jpg,Rooftop Punk Shows,2026-08-12,left side under title,6:30 PM,DC Public Library,Medium,Abbreviated weekday and month
+tommy_c.jpg,Tommy C Birthday Party,2026-08-08,bottom center,11:00 PM,DC9,Hard,Low-contrast neon text and glow effects
+august_happy_hour.jpg,August Summer Happy Hour,2026-08-04,center of flyer,7:00 PM,Social Room,Easy,Numeric month and day format
