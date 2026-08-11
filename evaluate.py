@@ -37,10 +37,10 @@ def main() -> None:
             continue
 
         print("Raw OCR:")
-        print(result["raw_text"] or "[no OCR text]")
-        print(f"Date found: {result['date_found']}")
-        print(f"Normalized date: {result['normalized_date']}")
-        print(f"Valid: {result['valid']}")
+        print(result.raw_text or "[no OCR text]")
+        print(f"Date found: {result.date_found}")
+        print(f"Event date: {result.event_date}")
+        print(f"Valid: {result.valid}")
 
     print("-" * 60)
 

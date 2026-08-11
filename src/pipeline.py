@@ -7,6 +7,7 @@ this stays the one place that knows the stage ordering.
 
 import argparse
 import sys
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -24,11 +25,20 @@ from src.ocr import (
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
+@dataclass
+class FlyerResult:
+    filename: str
+    raw_text: str
+    clean_text: str
+    date_found: Optional[str]
+    event_date: Optional[str]
+    valid: bool
+
 def extract_event_date(
     image_path,
     today: Optional[date] = None,
     use_full_image: bool = False,
-) -> dict:
+) -> FlyerResult:
     """
     Run the full pipeline over one flyer image.
 
@@ -56,15 +66,14 @@ def extract_event_date(
     extracted = extract_date(clean_text)
     normalized = normalize_date(extracted, today=today)
 
-    return {
-        "image": str(image_path),
-        "raw_text": raw_text,
-        "clean_text": clean_text,
-        "date_found": extracted.text if extracted is not None else None,
-        "normalized_date": normalized,
-        "valid": normalized is not None,
-    }
-
+    return FlyerResult(
+        filename=Path(image_path).name,
+        raw_text=raw_text,
+        clean_text=clean_text,
+        date_found=extracted.text if extracted is not None else None,
+        event_date=normalized,
+        valid=normalized is not None,
+    )
 
 def collect_image_paths(path: Path) -> list[Path]:
     if not path.exists():
@@ -82,12 +91,12 @@ def collect_image_paths(path: Path) -> list[Path]:
     )
 
 
-def format_result(result: dict) -> str:
+def format_result(result: FlyerResult) -> str:
     return (
-        f"Filename: {Path(result['image']).name}\n"
-        f"Date found: {result['date_found']}\n"
-        f"Normalized date: {result['normalized_date']}\n"
-        f"Valid: {result['valid']}"
+        f"Filename: {result.filename}\n"
+        f"Date found: {result.date_found}\n"
+        f"Event date: {result.event_date}\n"
+        f"Valid: {result.valid}"
     )
 
 
