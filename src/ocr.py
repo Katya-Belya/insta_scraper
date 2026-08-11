@@ -70,6 +70,14 @@ def preprocess(image, scale=DEFAULT_SCALE):
     image = image.convert("L")
     return image.resize((image.width * scale, image.height * scale))
 
+def preprocess_full_image(image, scale=DEFAULT_SCALE):
+    """
+    Prepare an entire flyer for OCR without cropping.
+
+    Converts the full image to grayscale and upscales it using the same
+    preprocessing settings as the existing cropped pipeline.
+    """
+    return preprocess(image, scale=scale)
 
 def image_to_text(image, psm=DEFAULT_PSM):
     """

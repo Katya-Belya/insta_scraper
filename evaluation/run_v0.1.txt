@@ -1,0 +1,86 @@
+------------------------------------------------------------
+Filename: across_life_worlds.jpg
+Raw OCR:
+SOVIET JEWISH EMIGRATION
+Fix. Exhibition Openin
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: august_happy_hour.jpg
+Raw OCR:
+ee NU
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: beach_day.jpg
+Raw OCR:
+ppapre
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: cuban_social.jpg
+Raw OCR:
+SOCIA
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: dc_flea.jpg
+Raw OCR:
+Shop cu
+=e Ya secondhand fa
+Hf a A | for every occ
+err = ae
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: flyer.jpg
+Raw OCR:
+ae, | A oi i ) t- . aie >
+USAIN Wye
+1 Te el
+v4 Las wea ba) Dru
+Ge PAA HS) ;
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: gogo_groovers.jpg
+Raw OCR:
+DC Go-Go Groover
+NEXT RUN/WALK:
+Catiurdaw Anril 12 law
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: rooftop_punk_shows.jpg
+Raw OCR:
+WED. AUG.12 = sige
+ABACOT
+GIRLSONTOAST \_
+\. RENRIOT
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: takoma_radio.jpg
+Raw OCR:
+: 4 .
+} &
+7 we PEODT ERE
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
+Filename: tommy_c.jpg
+Raw OCR:
+[no OCR text]
+Date found: None
+Normalized date: None
+Valid: False
+------------------------------------------------------------
