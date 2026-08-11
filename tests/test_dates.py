@@ -19,7 +19,7 @@ from datetime import date
 import pytest
 
 from src.dates import (
-    MONTH_NAME_DATE_RE,
+    MONTH_LOOKUP,
     ExtractedDate,
     extract_date,
     normalize_date,
@@ -35,19 +35,21 @@ NOTEBOOK_CLEAN_OCR = "-_ FRIDAY, MARCH 27t 4PM - 8PM"
 # PRESERVED BEHAVIOUR - extraction
 # ---------------------------------------------------------------------------
 
-def test_pattern_is_byte_for_byte_the_notebook_pattern():
-    """
-    The pattern is now built from the MONTHS tuple. Assert that still compiles
-    to exactly the literal the notebook used, so 'derived from a list' can
-    never silently broaden what matches.
-    """
-    notebook_literal = (
-        r"\b("
-        r"JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|"
-        r"JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER"
-        r")\s+(\d{1,2})(?:ST|ND|RD|TH|T)?\b"
-    )
-    assert MONTH_NAME_DATE_RE.pattern == notebook_literal
+def test_month_lookup_maps_full_names_and_abbrevs_to_canonical_names():
+    """Every month token resolves to one title-case full name via MONTH_LOOKUP."""
+    for name in (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ):
+        assert MONTH_LOOKUP[name.upper()] == name
+        assert MONTH_LOOKUP[name.upper()[:3]] == name
+
+
+def test_full_abbrev_and_numeric_formats_share_canonical_month_names():
+    assert extract_date("MARCH 15").month_name == "March"
+    assert extract_date("MAR 15").month_name == "March"
+    assert extract_date("MAR. 15").month_name == "March"
+    assert extract_date("8/15").month_name == "August"
 
 
 def test_extracts_date_from_notebook_raw_ocr():
@@ -99,10 +101,10 @@ def test_recognises_all_twelve_months():
         "no date here",
         "MARCH27",              # no separator: \s+ is required
         "MARCH 271",            # 3-digit day: \b prevents a partial match
-        "2/17/26",              # numeric format is NOT handled by this pattern
+        "2/17/26",              # three-part numeric (with year) is not handled
     ],
 )
-def test_returns_none_when_no_month_name_date(text):
+def test_returns_none_when_no_recognised_date(text):
     assert extract_date(text) is None
 
 
@@ -116,6 +118,58 @@ def test_day_is_an_int_with_leading_zero_dropped():
 def test_first_match_wins():
     """The notebook used .search(), taking the first hit."""
     assert extract_date("MARCH 27 and APRIL 3").text == "March 27"
+
+
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - abbreviated and numeric formats
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("SAT. APR 25", ExtractedDate("April", 25, "April 25")),
+        ("APR. 25", ExtractedDate("April", 25, "April 25")),
+        ("WED. AUG.12", ExtractedDate("August", 12, "August 12")),
+        ("Tuesday (8/4)@ 7pm", ExtractedDate("August", 4, "August 4")),
+        ("8-4", ExtractedDate("August", 4, "August 4")),
+    ],
+)
+def test_benchmark_flyer_formats(text, expected):
+    assert extract_date(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Jan 3",
+        "JAN. 3",
+        "apr 25",
+        "APR.25",
+        "AuG.12",
+    ],
+)
+def test_abbreviated_month_variants(text):
+    result = extract_date(text)
+    assert result is not None
+    assert result.day in (3, 25, 12)
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("8/4", ExtractedDate("August", 4, "August 4")),
+        ("08/04", ExtractedDate("August", 4, "August 4")),
+        ("12-25", ExtractedDate("December", 25, "December 25")),
+        ("1-1", ExtractedDate("January", 1, "January 1")),
+    ],
+)
+def test_numeric_month_day_formats(text, expected):
+    assert extract_date(text) == expected
+
+
+def test_numeric_date_normalizes_with_next_occurrence_rule():
+    extracted = extract_date("8/4")
+    assert normalize_date(extracted, today=date(2026, 1, 1)) == "2026-08-04"
 
 
 # ---------------------------------------------------------------------------

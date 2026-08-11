@@ -4,11 +4,9 @@ Date extraction and normalization.
 Pure text and date logic: no PIL, no pytesseract. This module is importable and
 fully testable in an environment with no OCR stack installed.
 
-The extraction pattern is carried over verbatim from
-notebooks/02_region_ocr_test.ipynb. It has deliberately NOT been broadened --
-it still only matches full month names followed by a day. Numeric dates
-(2/17/26), which the notebook explored separately against a different flyer,
-are not handled here.
+Matches full month names, abbreviated month names (with optional trailing
+period and flexible spacing), and numeric month/day forms (M/D and M-D).
+Three-part numeric dates with a year (e.g. 2/17/26) are not handled.
 """
 
 from datetime import date
@@ -24,16 +22,24 @@ MONTHS = (
 
 MONTH_NUMBERS = {name: i + 1 for i, name in enumerate(MONTHS)}
 
+# Full uppercase name and three-letter abbrev both map to the same title-case name.
+MONTH_LOOKUP: dict[str, str] = {}
+for _name in MONTHS:
+    _canonical = _name.title()
+    MONTH_LOOKUP[_name] = _canonical
+    MONTH_LOOKUP[_name[:3]] = _canonical
+
+_FULL = "|".join(MONTHS)
+_ABBR = "|".join(name[:3] for name in MONTHS)
+
 # Matches dates such as:
-#   MARCH 27
-#   MARCH 27th
-#   March 27t   (OCR truncation of "27th", seen on the sample flyer)
-#
-# Built from MONTHS so the alternation cannot drift out of sync with
-# MONTH_NUMBERS. test_dates.py asserts this compiles to the exact pattern
-# string the notebook used.
-MONTH_NAME_DATE_RE = re.compile(
-    r"\b(" + "|".join(MONTHS) + r")\s+(\d{1,2})(?:ST|ND|RD|TH|T)?\b",
+#   MARCH 27 / MARCH 27th / March 27t   (full month, OCR ordinals)
+#   APR 25 / APR. 25 / AUG.12           (abbrev, optional period, flexible space)
+#   (8/4) / 8-4                         (numeric month/day, no year)
+DATE_RE = re.compile(
+    rf"\b({_FULL})\s+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    rf"|\b(?P<month_num>\d{{1,2}})[/\-](?P<day_num>\d{{1,2}})(?!/\d)\b",
     flags=re.IGNORECASE,
 )
 
@@ -45,8 +51,8 @@ MONTH_NAME_DATE_RE = re.compile(
 # or the second, so a wider window cannot push an ordinary date further out.
 #
 # Residual limit: century years divisible by 100 but not 400 are not leap, so
-# the gap 2096 -> 2104 is 8 years and a Feb 29 falling in it returns None.
-# That is ~70 years away; a 9-year window would close it.
+# the gap 2096 -> 2104 is 8 years, wider than the 5-year window. That is ~70
+# years away; a 9-year window would close it.
 SEARCH_YEARS = 5
 
 
@@ -58,20 +64,41 @@ class ExtractedDate(NamedTuple):
     text: str        # human-readable, e.g. "March 27"
 
 
+def _canonical_month_name(token: str) -> Optional[str]:
+    return MONTH_LOOKUP.get(token.upper().rstrip("."))
+
+
+def _month_name_from_number(month: int) -> Optional[str]:
+    if 1 <= month <= 12:
+        return MONTHS[month - 1].title()
+    return None
+
+
 def extract_date(text: str) -> Optional[ExtractedDate]:
     """
-    Find the first month-name date in `text`.
+    Find the first month/day date in `text`.
 
     Returns None if no date is found. Does not validate that the day is real
     for that month -- that happens in normalize_date, which is where a calendar
     is actually consulted.
     """
-    match = MONTH_NAME_DATE_RE.search(text)
+    match = DATE_RE.search(text)
     if match is None:
         return None
 
-    month_name = match.group(1).title()
-    day = int(match.group(2))
+    if match.group(1) is not None:
+        month_name = _canonical_month_name(match.group(1))
+        day = int(match.group("day_full"))
+    elif match.group("month_abbr") is not None:
+        month_name = _canonical_month_name(match.group("month_abbr"))
+        day = int(match.group("day_abbr"))
+    else:
+        month_name = _month_name_from_number(int(match.group("month_num")))
+        day = int(match.group("day_num"))
+
+    if month_name is None:
+        return None
+
     return ExtractedDate(month_name=month_name, day=day, text=f"{month_name} {day}")
 
 
