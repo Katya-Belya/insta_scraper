@@ -11,6 +11,8 @@ def test_flyer_result_fields_match_expected_columns():
         "date_found",
         "event_date",
         "valid",
+        "status",
+        "needs_review",
     ]
 
 
@@ -22,11 +24,15 @@ def test_format_result_uses_flyer_result_fields():
         date_found="August 4",
         event_date="2027-08-04",
         valid=True,
+        status="ok",
+        needs_review=False,
     )
 
-    output = format_result(result)
+    formatted = format_result(result)
 
-    assert "august_happy_hour.jpg" in output
-    assert "August 4" in output
-    assert "2027-08-04" in output
-    assert "True" in output
+    assert "august_happy_hour.jpg" in formatted
+    assert "August 4" in formatted
+    assert "2027-08-04" in formatted
+    assert "True" in formatted
+    assert "ok" in formatted
+    assert "False" in formatted
