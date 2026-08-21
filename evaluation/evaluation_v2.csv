@@ -1,0 +1,11 @@
+filename,expected_date,actual_date,result,failure_type,notes
+1000035677.jpg,9/5/2026,,FAIL,regex,"OCR recovered 'SEPT. 5TH', but the parser did not extract it."
+1000035678.jpg,,,PASS,,Correctly returned no event date because this image has no visible event date.
+1000035679.jpg,8/22/2026,8/22/2026,PASS,,Pipeline event_date matches ground truth.
+1000035680.jpg,9/12/2026,,FAIL,OCR,"The visible Sept. 12, 2026 event date was not recovered in usable OCR text."
+1000035681.jpg,8/27/2026,,FAIL,regex,"OCR recovered 'AUGUST)27th', but the parser did not recognize the malformed separator."
+1000035682.jpg,8/24/2026,7/22/2026,FAIL,date selection,"OCR contained the correct August 24 event date, but the pipeline selected an earlier July 22 Instagram-screen date."
+1000035686.jpg,9/19/2026,9/19/2026,PASS,,Pipeline event_date matches ground truth.
+1000035687.jpg,10/10/2026,7/27/2026,FAIL,OCR,The visible 10.10.26 event date was not recovered; the pipeline instead found July 27 from Instagram metadata.
+1000035706.jpg,8/29/2026,7/12/2026,FAIL,date selection,"OCR contained the correct August 29 event date, but the pipeline selected the earlier July 12 Instagram-screen date."
+1000035707.jpg,8/21/2026,7/21/2026,FAIL,OCR,The visible August 21 event date was not recovered in OCR; the pipeline selected July 21 from Instagram metadata.
