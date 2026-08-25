@@ -29,15 +29,18 @@ for _name in MONTHS:
     MONTH_LOOKUP[_name] = _canonical
     MONTH_LOOKUP[_name[:3]] = _canonical
 
+# Common four-letter September abbreviation.
+MONTH_LOOKUP["SEPT"] = "September"
+
 _FULL = "|".join(MONTHS)
-_ABBR = "|".join(name[:3] for name in MONTHS)
+_ABBR = "|".join([*(name[:3] for name in MONTHS), "SEPT"])
 
 # Matches dates such as:
 #   MARCH 27 / MARCH 27th / March 27t   (full month, OCR ordinals)
 #   APR 25 / APR. 25 / AUG.12           (abbrev, optional period, flexible space)
 #   (8/4) / 8-4                         (numeric month/day, no year)
 DATE_RE = re.compile(
-    rf"\b({_FULL})\s+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    rf"\b({_FULL})[\s.,:;()\-]+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
     rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
     rf"|\b(?P<month_num>\d{{1,2}})[/\-](?P<day_num>\d{{1,2}})(?!/\d)\b",
     flags=re.IGNORECASE,

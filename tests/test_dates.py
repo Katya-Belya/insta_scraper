@@ -51,6 +51,25 @@ def test_full_abbrev_and_numeric_formats_share_canonical_month_names():
     assert extract_date("MAR. 15").month_name == "March"
     assert extract_date("8/15").month_name == "August"
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AUGUST)27th",
+        "AUGUST,27th",
+        "AUGUST.27th",
+        "AUGUST-27th",
+    ],
+)
+def test_full_month_tolerates_punctuation_separator(text):
+    assert extract_date(text) == ExtractedDate(
+        "August", 27, "August 27"
+    )
+
+
+def test_sept_four_letter_abbreviation():
+    assert extract_date("SEPT. 5TH") == ExtractedDate(
+        "September", 5, "September 5"
+    )
 
 def test_extracts_date_from_notebook_raw_ocr():
     """The headline case: the real OCR output the prototype was built on."""
