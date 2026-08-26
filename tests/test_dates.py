@@ -31,7 +31,7 @@ from src.dates import (
     extract_date,
     extract_dates,
     select_event_date,
-    normalize_date,
+    normalize_date
 )
 
 

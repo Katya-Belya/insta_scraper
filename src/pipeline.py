@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Optional
 
 # Import the date-specific parts of the pipeline.
-# extract_date() finds a month/day in OCR text.
-# normalize_date() turns that month/day into an ISO date such as 2027-08-15.
-from src.dates import extract_date, normalize_date
+# extract_dates() finds all recognizable date candidates in OCR text.
+# select_event_date() chooses the most plausible event date.
+# normalize_date() turns that month/day into an ISO date.
+from src.dates import extract_dates, select_event_date, normalize_date
 
 # Import the image/OCR-specific parts of the pipeline.
 from src.ocr import (
@@ -78,13 +79,14 @@ def extract_event_date(
     """
     Run the full pipeline over one flyer image.
 
-    Stages, in order:
-        load -> optional crop -> preprocess -> OCR -> clean -> extract -> normalize
+Stages, in order:
+    load -> optional crop -> preprocess -> OCR -> clean
+         -> find date candidates -> select event date -> normalize
 
-    `today` is passed through to normalize_date; see that function for the
-    next-occurrence rule. Pass it explicitly for reproducible output.
+    'today' is used both to choose among date candidates and to infer the year.
+    Pass it explicitly when reproducible output is needed, such as in benchmarks.
 
-    `use_full_image=True` skips the cherry-blossom-specific crop and runs OCR
+    'use_full_image=True' skips the cherry-blossom-specific crop and runs OCR
     over the entire flyer.
     """
 
@@ -109,30 +111,66 @@ def extract_event_date(
     # STEP 5: Clean up OCR whitespace so the text is easier to search.
     clean_text = clean_ocr_text(raw_text)
 
-    # STEP 6: Search the cleaned text for something that looks like a date.
-    extracted = extract_date(clean_text)
+    # STEP 6: Find ALL dates that OCR was able to recognize.
+    #
+    # Before this change, the pipeline used extract_date(), which returned
+    # only the first date it saw.
+    #
+    # That caused problems with Instagram screenshots. For example:
+    #
+    #     July 22        <- Instagram/post date
+    #     August 24      <- actual event date
+    #
+    # We now keep both dates so we can decide which one is more likely
+    # to be the event date.
+    candidates = extract_dates(clean_text)
 
-    # STEP 7: Convert that month/day into a full YYYY-MM-DD date.
-    normalized = normalize_date(extracted, today=today)
+    # STEP 7: Choose the best date from the candidates.
+    #
+    # select_event_date() currently prefers the nearest upcoming date.
+    #
+    # We pass `today` into this function because "upcoming" depends on
+    # what day we are pretending it is.
+    extracted = select_event_date(
+        candidates,
+        today=today,
+    )
 
-    # STEP 8: Decide whether this result needs human review.
+    # STEP 8: Add a year to the selected month/day.
+    #
+    # For example:
+    #
+    #     August 24
+    #
+    # becomes:
+    #
+    #     2026-08-24
+    #
+    # IMPORTANT: We pass the SAME `today` value here that we used above.
+    # Otherwise date selection and year selection could disagree.
+    normalized = normalize_date(
+        extracted,
+        today=today,
+    )
+
+    # STEP 9: Decide whether a person needs to review the result.
     if extracted is None:
-        # We could not find a recognizable date in the OCR text.
+        # OCR did not give us any date that the parser could recognize.
         status = "no_date_found"
         needs_review = True
 
     elif normalized is None:
-        # We found something that looked like a date, but it could not
-        # be converted into a valid calendar date.
+        # We found something that looked like a date, but could not turn
+        # it into a real calendar date.
         status = "invalid_date"
         needs_review = True
 
     else:
-        # A date was found and successfully normalized.
+        # We found a date and successfully turned it into YYYY-MM-DD.
         status = "ok"
         needs_review = False
 
-    # STEP 9: Package everything we learned into one structured object.
+    # STEP 10: Put everything we learned about this flyer into one object.
     return FlyerResult(
         filename=Path(image_path).name,
         raw_text=raw_text,
@@ -179,31 +217,36 @@ def collect_image_paths(path: Path) -> list[Path]:
     )
 
 
-def process_flyers(image_paths):
+def process_flyers(
+    image_paths,
+    today: Optional[date] = None,
+):
     """
     Process several flyer images and collect all their FlyerResults.
 
-    Each image is processed one at a time, but the results are saved together
-    in a list so they can later be printed, exported to CSV, or reviewed.
+    `today` is optional. Normally it is None, which means the real current
+    date will be used.
+
+    For a benchmark, we can provide a fixed date so running the same
+    benchmark later gives us the same results.
     """
 
-    # Start with an empty list that will hold the processed flyer results.
     results = []
 
-    # Go through every image path that collect_image_paths() found.
     for image_path in image_paths:
 
-        # Process one flyer and get back one FlyerResult.
+        # Give every flyer the SAME reference date.
+        #
+        # This matters for benchmarks. We do not want flyer #1 to be
+        # interpreted using one date and flyer #2 using another.
         result = extract_event_date(
             image_path,
+            today=today,
             use_full_image=True,
         )
 
-        # Save that result in the list.
         results.append(result)
 
-    # Return the complete collection.
-    # Ten flyers in means ten FlyerResult objects out.
     return results
 
 
@@ -303,21 +346,81 @@ def main(argv=None) -> int:
         help="Image file or directory of flyer images",
     )
 
+    # Optional benchmark/reference date.
+    #
+    # Normal use:
+    #
+    #     python -m src.pipeline data/raw/
+    #
+    # uses the real current date.
+    #
+    # Benchmark use:
+    #
+    #     python -m src.pipeline data/raw/benchmark_v2 --today 2026-08-20
+    #
+    # tells the pipeline to behave as though today were August 20, 2026.
+    #
+    # This makes benchmark results reproducible. Otherwise an August 22
+    # flyer could become 2027-08-22 simply because we reran the benchmark
+    # after August 22 had already passed.
+    parser.add_argument(
+        "--today",
+        help="Reference date in YYYY-MM-DD format (useful for reproducible benchmarks)",
+    )
+
     # Read the user's command-line arguments.
     args = parser.parse_args(argv)
 
-    # Turn the supplied path into a list of image paths.
+    # Start with no special reference date.
+    # None means normal runs will use the real current date.
+    reference_date = None
+
+    # If the user supplied --today, convert the text into a real Python date.
+    #
+    # Example:
+    #
+    #     --today 2026-08-20
+    #
+    # turns the string "2026-08-20" into:
+    #
+    #     date(2026, 8, 20)
+    #
+    # We use this fixed date when rerunning benchmarks so the results do not
+    # change just because we happen to run the benchmark on a different day.
+    if args.today:
+        try:
+            reference_date = date.fromisoformat(args.today)
+
+        except ValueError:
+            # date.fromisoformat() expects YYYY-MM-DD.
+            # Give a simple message instead of showing a Python traceback.
+            print(
+                "Error: --today must use YYYY-MM-DD format",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Find the image or images the user asked us to process.
+    #
+    # This happens whether or not --today was supplied.
     try:
         image_paths = collect_image_paths(Path(args.path))
 
-    # If the path is bad or the file type is unsupported,
-    # show a readable error instead of a Python traceback.
     except ValueError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
-    # Process every flyer and keep all of the structured results.
-    results = process_flyers(image_paths)
+    # Process all flyers using the chosen reference date.
+    #
+    # If reference_date is None:
+    #     normal behavior → use the real current date
+    #
+    # If reference_date is 2026-08-20:
+    #     benchmark behavior → pretend it is August 20, 2026
+    results = process_flyers(
+        image_paths,
+        today=reference_date,
+    )
 
     # Save those same structured results to a CSV file.
     write_csv(results, "results.csv")
