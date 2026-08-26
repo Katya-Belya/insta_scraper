@@ -1,17 +1,24 @@
 """
 Tests for src.dates.
 
-Two groups, kept explicitly separate:
+The tests are grouped by what they check:
 
-  PRESERVED BEHAVIOUR
-      Locks in what notebooks/02_region_ocr_test.ipynb already did. These
-      encode the existing prototype and should only change deliberately.
+  ORIGINAL BEHAVIOUR
+      Makes sure older date extraction still works after we change the code.
 
-  NEW BEHAVIOUR
-      The next-occurrence year rule, which replaces the notebook's hardcoded
-      `expected_year=2026`. New in this commit.
+  DATE FORMATS
+      Tests different ways dates can appear, such as APR. 25, SEPT. 5TH,
+      AUGUST)27th, and 8/4.
 
-Requires no Tesseract install.
+  MULTIPLE DATES
+      Makes sure extract_dates() can find all dates in the text, not just
+      the first one. This is useful when an Instagram screenshot contains
+      both an Instagram date and the actual event date.
+
+  DATE NORMALIZATION
+      Tests how a month and day are turned into a full date with a year.
+
+These tests do not require Tesseract or OCR.
 """
 
 from datetime import date
@@ -22,6 +29,7 @@ from src.dates import (
     MONTH_LOOKUP,
     ExtractedDate,
     extract_date,
+    extract_dates,
     normalize_date,
 )
 
@@ -61,12 +69,24 @@ def test_full_abbrev_and_numeric_formats_share_canonical_month_names():
     ],
 )
 def test_full_month_tolerates_punctuation_separator(text):
+    """
+    Regression coverage for OCR punctuation noise found in the benchmark.
+
+    OCR may insert punctuation between a month and day instead of whitespace.
+    These variants should all normalize to the same extracted date.
+    """
     assert extract_date(text) == ExtractedDate(
         "August", 27, "August 27"
     )
 
 
 def test_sept_four_letter_abbreviation():
+    """
+    Regression coverage for the benchmark's 'SEPT. 5TH' format.
+
+    SEPT is a common four-letter abbreviation that is not covered by simply
+    taking the first three letters of SEPTEMBER.
+    """
     assert extract_date("SEPT. 5TH") == ExtractedDate(
         "September", 5, "September 5"
     )
@@ -239,11 +259,57 @@ def test_impossible_calendar_date_returns_none():
     extracted = ExtractedDate("June", 31, "June 31")
     assert normalize_date(extracted, today=date(2026, 1, 1)) is None
 
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - multiple date candidates
+# ---------------------------------------------------------------------------
 
-def test_day_zero_returns_none():
-    extracted = ExtractedDate("March", 0, "March 0")
-    assert normalize_date(extracted, today=date(2026, 1, 1)) is None
+def test_extract_dates_returns_all_matches_in_order():
+    """
+    Basic multiple-date case.
 
+    extract_date() preserves the original first-match behavior, but
+    extract_dates() should scan the entire text and return every recognized
+    date in the order in which it appears.
+    """
+    assert extract_dates("MARCH 27 and APRIL 3") == [
+        ExtractedDate("March", 27, "March 27"),
+        ExtractedDate("April", 3, "April 3"),
+    ]
+
+
+def test_extract_dates_finds_ui_and_event_dates():
+    """
+    Regression case based on the benchmark.
+
+    An Instagram screenshot can contain an unrelated UI/post date before the
+    actual event date. Extraction should preserve both candidates rather than
+    discarding everything after the first match.
+
+    This test does NOT decide which date is correct. Candidate selection is a
+    separate responsibility that will be tested separately.
+    """
+    text = """
+    July 22
+    ASK A D.C. NATIVE
+    Monday, August 24, 2026
+    """
+
+    assert extract_dates(text) == [
+        ExtractedDate("July", 22, "July 22"),
+        ExtractedDate("August", 24, "August 24"),
+    ]
+
+def test_extract_dates_finds_ui_and_event_dates():
+    text = """
+    July 22
+    ASK A D.C. NATIVE
+    Monday, August 24, 2026
+    """
+
+    assert extract_dates(text) == [
+        ExtractedDate("July", 22, "July 22"),
+        ExtractedDate("August", 24, "August 24"),
+    ]
 
 LEAP_DAY = ExtractedDate("February", 29, "February 29")
 

@@ -4,8 +4,15 @@ Date extraction and normalization.
 Pure text and date logic: no PIL, no pytesseract. This module is importable and
 fully testable in an environment with no OCR stack installed.
 
+The module separates three responsibilities:
+1. Recognize date-like text.
+2. Convert matches into structured date candidates.
+3. Normalize a selected month/day to a calendar date.
+
 Matches full month names, abbreviated month names (with optional trailing
-period and flexible spacing), and numeric month/day forms (M/D and M-D).
+period and flexible punctuation/spacing), and numeric month/day forms
+(M/D and M-D).
+
 Three-part numeric dates with a year (e.g. 2/17/26) are not handled.
 """
 
@@ -58,51 +65,124 @@ DATE_RE = re.compile(
 # years away; a 9-year window would close it.
 SEARCH_YEARS = 5
 
-
 class ExtractedDate(NamedTuple):
-    """A month/day pair recovered from OCR text. No year -- flyers rarely show one."""
+    """
+    Structured representation of a date found in OCR text.
 
-    month_name: str  # title case, e.g. "March"
-    day: int
-    text: str        # human-readable, e.g. "March 27"
+    The parser extracts only month and day. The year is deliberately handled
+    later by normalize_date(), because many event flyers omit the year.
+    """
+
+    month_name: str  # Canonical full name, e.g. "August"
+    day: int         # Numeric day, e.g. 27
+    text: str        # Human-readable normalized form, e.g. "August 27"
 
 
 def _canonical_month_name(token: str) -> Optional[str]:
+    """
+    Convert a month token found by the regex into its canonical full name.
+
+    Examples:
+        "AUG"  -> "August"
+        "AUG." -> "August"
+        "SEPT" -> "September"
+
+    Returning one canonical form means later code does not need to care
+    which spelling or abbreviation appeared in the OCR.
+    """
     return MONTH_LOOKUP.get(token.upper().rstrip("."))
 
 
 def _month_name_from_number(month: int) -> Optional[str]:
+    """
+    Convert a numeric month into the same canonical month-name format.
+
+    Example:
+        8 -> "August"
+
+    Invalid month numbers return None rather than creating an invalid date.
+    """
     if 1 <= month <= 12:
         return MONTHS[month - 1].title()
     return None
 
 
-def extract_date(text: str) -> Optional[ExtractedDate]:
+def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
     """
-    Find the first month/day date in `text`.
+    Turn one regex match into an ExtractedDate.
 
-    Returns None if no date is found. Does not validate that the day is real
-    for that month -- that happens in normalize_date, which is where a calendar
-    is actually consulted.
+    DATE_RE recognizes three possible forms:
+        1. Full month:       AUGUST 27
+        2. Abbreviation:     AUG. 27
+        3. Numeric:          8/27
+
+    This helper converts all three forms into the same ExtractedDate
+    representation so the rest of the pipeline can treat them identically.
     """
-    match = DATE_RE.search(text)
-    if match is None:
-        return None
 
+    # Full month-name match, such as "AUGUST 27".
     if match.group(1) is not None:
         month_name = _canonical_month_name(match.group(1))
         day = int(match.group("day_full"))
+
+    # Abbreviated month match, such as "AUG. 27" or "SEPT. 5TH".
     elif match.group("month_abbr") is not None:
         month_name = _canonical_month_name(match.group("month_abbr"))
         day = int(match.group("day_abbr"))
+
+    # Numeric match, such as "8/27" or "8-27".
     else:
-        month_name = _month_name_from_number(int(match.group("month_num")))
+        month_name = _month_name_from_number(
+            int(match.group("month_num"))
+        )
         day = int(match.group("day_num"))
 
+    # A regex match is not useful if its month cannot be interpreted.
     if month_name is None:
         return None
 
-    return ExtractedDate(month_name=month_name, day=day, text=f"{month_name} {day}")
+    # All supported input formats leave this function in one standard form.
+    return ExtractedDate(
+        month_name=month_name,
+        day=day,
+        text=f"{month_name} {day}",
+    )
+
+
+def extract_dates(text: str) -> list[ExtractedDate]:
+    """
+    Find every recognizable month/day date in the text.
+
+    Unlike extract_date(), this does NOT stop at the first match.
+
+    This became necessary because an Instagram screenshot can contain several
+    dates: for example, an Instagram/UI date plus the actual event date.
+    At this stage we intentionally keep every candidate. Deciding which
+    candidate is the event date is a separate responsibility.
+    """
+    dates = []
+
+    # finditer() scans the entire OCR text and yields every DATE_RE match
+    # in the same order in which the matches appear in the text.
+    for match in DATE_RE.finditer(text):
+        extracted = _extracted_date_from_match(match)
+
+        if extracted is not None:
+            dates.append(extracted)
+
+    return dates
+
+
+def extract_date(text: str) -> Optional[ExtractedDate]:
+    """
+    Return only the first recognizable date.
+
+    This preserves the behavior of the original pipeline and existing tests.
+    New code that needs to reason about multiple possible dates should use
+    extract_dates() and perform date selection separately.
+    """
+    dates = extract_dates(text)
+    return dates[0] if dates else None
 
 
 def normalize_date(
