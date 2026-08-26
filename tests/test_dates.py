@@ -30,6 +30,7 @@ from src.dates import (
     ExtractedDate,
     extract_date,
     extract_dates,
+    select_event_date,
     normalize_date,
 )
 
@@ -368,3 +369,48 @@ def test_today_defaults_to_the_real_today():
     result = normalize_date(extracted)
     assert result is not None
     assert date.fromisoformat(result) >= date.today()
+
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - event date selection
+# ---------------------------------------------------------------------------
+
+def test_select_event_date_prefers_nearest_upcoming_date():
+    """
+    Regression case from the benchmark.
+
+    July 22 is an older Instagram/UI date. August 24 is the upcoming event.
+    """
+    candidates = extract_dates(
+        "July 22 ASK A D.C. NATIVE Monday, August 24, 2026"
+    )
+
+    result = select_event_date(
+        candidates,
+        today=date(2026, 8, 20),
+    )
+
+    assert result == ExtractedDate(
+        "August", 24, "August 24"
+    )
+
+
+def test_select_event_date_skips_old_ui_date():
+    """
+    Another benchmark case: July 12 appears before the August 29 event date.
+    """
+    candidates = extract_dates(
+        "July 12 SATURDAY AUGUST 29 SIMPLE UNDERGROUND"
+    )
+
+    result = select_event_date(
+        candidates,
+        today=date(2026, 8, 20),
+    )
+
+    assert result == ExtractedDate(
+        "August", 29, "August 29"
+    )
+
+
+def test_select_event_date_returns_none_for_no_candidates():
+    assert select_event_date([], today=date(2026, 8, 20)) is None

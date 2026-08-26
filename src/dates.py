@@ -184,6 +184,38 @@ def extract_date(text: str) -> Optional[ExtractedDate]:
     dates = extract_dates(text)
     return dates[0] if dates else None
 
+def select_event_date(
+    candidates: list[ExtractedDate],
+    today: Optional[date] = None,
+) -> Optional[ExtractedDate]:
+    """
+    Choose the candidate whose next occurrence is closest to today.
+
+    This helps when OCR text contains several dates, such as an older
+    Instagram/UI date followed by the actual upcoming event date.
+    """
+    if not candidates:
+        return None
+
+    if today is None:
+        today = date.today()
+
+    ranked = []
+
+    for candidate in candidates:
+        normalized = normalize_date(candidate, today=today)
+
+        if normalized is not None:
+            ranked.append(
+                (date.fromisoformat(normalized), candidate)
+            )
+
+    if not ranked:
+        return None
+
+    # Earliest upcoming normalized date wins.
+    ranked.sort(key=lambda item: item[0])
+    return ranked[0][1]
 
 def normalize_date(
     extracted: Optional[ExtractedDate],
