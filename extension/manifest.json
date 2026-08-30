@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Flyer Event Extractor",
+  "version": "0.1.0",
+  "description": "Extract event information from flyers.",
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

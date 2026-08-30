@@ -1,0 +1,57 @@
+<head>
+  <meta charset="UTF-8">
+  <title>Flyer Event Extractor</title>
+
+  <style>
+    body {
+      width: 260px;
+      padding: 12px;
+      font-family: Arial, sans-serif;
+    }
+
+    h2 {
+      margin-top: 0;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    button {
+      margin-right: 6px;
+    }
+  </style>
+</head>
+
+  <!-- JavaScript will fill these values from flyerResult -->
+  <p>
+  <strong>File:</strong>
+  <span id="filename"></span>
+</p>
+
+  <p>
+    <strong>Event date:</strong>
+    <span id="event-date"></span>
+  </p>
+
+  <p>
+    <strong>Status:</strong>
+    <span id="status"></span>
+  </p>
+
+  <p>
+  <strong>Needs review:</strong>
+  <span id="needs-review"></span>
+</p>
+
+  <!-- Buttons the user will eventually use to review a FlyerResult -->
+  <button id="accept">Accept</button>
+  <button id="edit">Edit</button>
+
+  <!-- JavaScript writes feedback here after a button is clicked -->
+  <p id="message"></p>
+
+  <!-- Load the popup behavior -->
+<script src="latest_result.js"></script>
+<script src="popup.js"></script>
+</body>

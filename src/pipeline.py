@@ -8,6 +8,7 @@ this stays the one place that knows the stage ordering.
 import argparse
 import csv
 import sys
+import json
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -316,6 +317,20 @@ def write_csv(results, output_path):
                 }
             )
 
+def write_latest_result_js(result, path="extension/latest_result.js"):
+    # Convert the latest FlyerResult into the fields used by the popup.
+    flyer_data = {
+        "filename": result.filename,
+        "eventDate": result.event_date,
+        "status": result.status,
+        "needsReview": result.needs_review,
+    }
+
+    # Write a small JavaScript data file that popup.js can read.
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("window.flyerResult = ")
+        json.dump(flyer_data, f)
+        f.write(";")
 
 def main(argv=None) -> int:
     """
@@ -424,6 +439,9 @@ def main(argv=None) -> int:
 
     # Save those same structured results to a CSV file.
     write_csv(results, "results.csv")
+    # For the local V1 demo, show the most recently processed result in the extension.
+    if results:
+        write_latest_result_js(results[-1])
 
     # Also show the results in the terminal.
     for result in results:
