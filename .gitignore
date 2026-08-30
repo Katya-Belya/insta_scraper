@@ -22,3 +22,4 @@ data/processed/*
 
 # Generated output
 results.csv
+extension/latest_result.js
