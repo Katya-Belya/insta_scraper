@@ -3,6 +3,7 @@
   "name": "Flyer Event Extractor",
   "version": "0.1.0",
   "description": "Extract event information from flyers.",
+  "permissions": ["storage"],
   "action": {
     "default_popup": "popup.html"
   }
