@@ -62,7 +62,8 @@ The normalization step converts extracted dates into a consistent machine-readab
 - Year correction is currently heuristic-based.
 - Time, venue, price, and event-name extraction are not yet implemented as a complete pipeline.
 - Instagram caption ingestion is planned but not yet implemented.
-- CSV and ICS export are planned but not yet implemented.
+- ICS export is not yet implemented. CSV export is: a run writes one row
+  per flyer to `results.csv`.
 
 ## Planned Pipeline
 
