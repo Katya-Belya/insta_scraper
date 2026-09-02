@@ -20,6 +20,10 @@
     button {
       margin-right: 6px;
     }
+
+    #event-date-input {
+      width: 110px;
+    }
   </style>
 </head>
 
@@ -32,6 +36,8 @@
   <p>
     <strong>Event date:</strong>
     <span id="event-date"></span>
+    <!-- Shown instead of the span while the date is being edited -->
+    <input id="event-date-input" type="text" hidden>
   </p>
 
   <p>
@@ -47,6 +53,8 @@
   <!-- Buttons the user will eventually use to review a FlyerResult -->
   <button id="accept">Accept</button>
   <button id="edit">Edit</button>
+  <!-- Only shown while the date is being edited -->
+  <button id="save" hidden>Save</button>
 
   <!-- JavaScript writes feedback here after a button is clicked -->
   <p id="message"></p>
