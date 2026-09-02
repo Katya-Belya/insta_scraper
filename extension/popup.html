@@ -40,6 +40,12 @@
     <input id="event-date-input" type="text" hidden>
   </p>
 
+  <!-- Only shown once the reviewed date differs from the one OCR read -->
+  <p id="original-event-date-row" hidden>
+    <strong>Original date:</strong>
+    <span id="original-event-date"></span>
+  </p>
+
   <p>
     <strong>Status:</strong>
     <span id="status"></span>
@@ -49,6 +55,11 @@
   <strong>Needs review:</strong>
   <span id="needs-review"></span>
 </p>
+
+  <p>
+    <strong>Review status:</strong>
+    <span id="review-status"></span>
+  </p>
 
   <!-- Buttons the user will eventually use to review a FlyerResult -->
   <button id="accept">Accept</button>
