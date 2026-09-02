@@ -23,3 +23,5 @@ data/processed/*
 # Generated output
 results.csv
 extension/latest_result.js
+events.ics
+results_clean.csv
