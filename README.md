@@ -113,16 +113,35 @@ insta_scraper/
 │   ├── raw/
 │   └── sample/
 │       └── cherry_blossom_market.jpeg
+├── evaluation/
+│   ├── README.md
+│   ├── ground_truth_v2.csv
+│   ├── results_benchmark_v2.1.csv
+│   └── ...
+├── extension/
+│   ├── manifest.json
+│   ├── popup.html
+│   └── popup.js
 ├── notebooks/
 │   ├── 01_ocr_smoke_test.ipynb
 │   └── 02_region_ocr_test.ipynb
 ├── src/
-│   └── ocr_utils.py
+│   ├── __init__.py
+│   ├── dates.py
+│   ├── ocr.py
+│   └── pipeline.py
+├── tests/
+│   ├── popup_review.test.js
+│   ├── test_dates.py
+│   ├── test_ocr.py
+│   └── test_pipeline.py
 ├── .gitignore
 ├── .pre-commit-config.yaml
 ├── CHANGELOG.md
 ├── LICENSE
 ├── README.md
+├── conftest.py
+├── evaluate.py
 └── requirements.txt
 ```
 
@@ -131,12 +150,24 @@ insta_scraper/
 - `data/sample/` contains permanent demonstration images.
 - `data/raw/` is intended for newly ingested, unprocessed images.
 - `data/processed/` is intended for cropped or preprocessed image outputs.
+- `evaluation/` collects ground-truth spreadsheets, benchmark results, and run
+  logs from earlier pipeline versions.
+- `extension/` is a Chrome extension that shows the most recent pipeline
+  result and records a review of it.
 - `notebooks/` contains exploratory OCR experiments.
-- `src/` contains reusable Python functions as the prototype is gradually refactored.
+- `src/` contains the pipeline itself: `ocr.py` reads a flyer image, `dates.py`
+  finds and normalizes dates in that text, and `pipeline.py` runs the stages in
+  order and writes the output.
+- `tests/` holds the Python tests, run with `pytest`, alongside
+  `popup_review.test.js`, which covers the extension's review workflow and runs
+  with `node tests/popup_review.test.js`.
 
 `data/raw/` and `data/processed/` are gitignored. Ingested flyers are
 third-party content and may identify event organizers and attendees, so they
 stay local; only `data/sample/` is tracked.
+
+`results.csv` and `extension/latest_result.js` are gitignored too: the pipeline
+writes both, so they are outputs of a run rather than source.
 
 ## Requirements
 
