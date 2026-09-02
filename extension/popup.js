@@ -78,10 +78,15 @@ function setEditing(editing) {
   document.getElementById("edit").hidden = editing;
   document.getElementById("save").hidden = !editing;
 
+  // Accept only applies to a result nobody has settled yet.
+  //
   // Accepting a result while its date is still being edited would store the
-  // old date, so Accept waits until the edit is saved.
+  // old date, so Accept waits until the edit is saved. Once the review has
+  // settled - "accepted", or "edited" with a date the user chose - there is
+  // nothing left to accept, and accepting anyway would relabel a corrected
+  // date as if it were the one the pipeline read.
   document.getElementById("accept").disabled =
-    editing || reviewedResult.reviewStatus === REVIEW_ACCEPTED;
+    editing || reviewedResult.reviewStatus !== REVIEW_PENDING;
 }
 
 // Display the reviewed result in the popup.
