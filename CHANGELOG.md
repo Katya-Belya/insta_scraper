@@ -144,35 +144,54 @@ Behavior:
 
 ---
 
+## Phase 10: Calendar Export from Reviewed Results
+
+* Added an **Export to Calendar** button to the Chrome extension
+* Added `extension/ics.js` to create calendar files directly in JavaScript
+* Only `accepted` and `edited` results can be exported
+* `pending` results are blocked until the user reviews them
+* Export uses the reviewed `eventDate`, including any correction made by the user
+* Each result is exported as an all-day event because event times are not yet extracted
+* The calendar description tells the user to verify the time against the original flyer
+* The JPEG filename is temporarily used as the event title
+* The downloaded file is named `reviewed_events.ics`
+* Added automated tests for accepted, edited, and pending results
+* Tested the full workflow in Chrome and successfully imported an edited event into Google Calendar
+
+---
+
 ## Current Status
-- The end-to-end pipeline runs from a flyer image to a normalized event date
-  and writes `results.csv`
-- A run also publishes its most recent result to the Chrome extension
-- The CSV to ICS path is proven by a standalone `csv_to_ics.py` proof of
-  concept, which is not yet connected to the reviewed-result workflow
-- The popup's review workflow is complete: Accept and Edit are both
-  implemented and both persist through `chrome.storage.local`
-- A reviewed flyer carries a canonical result with `originalEventDate`,
-  `eventDate`, `needsReview`, and `reviewStatus`
-- OCR remains imperfect, so human review is still part of the flow
+
+- The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
+- The most recent pipeline result is also sent to the Chrome extension
+- The popup lets the user Accept the extracted date or Edit and Save a correction
+- The reviewed result persists in `chrome.storage.local`
+- Accepted and edited results can be downloaded as `reviewed_events.ics`
+- Pending results cannot be exported
+- Calendar export uses the reviewed `eventDate`, not the original OCR date
+- The standalone `csv_to_ics.py` remains as an earlier proof of concept; the extension now generates its own calendar file directly in JavaScript
+- OCR remains imperfect, so human review is still part of the workflow
 
 ---
 
 ## Next Steps
-- Export only canonical results whose `reviewStatus` is `accepted` or
-  `edited`, using `eventDate` as the event's date
-- Leave `pending` results out of the export: nobody has reviewed them yet
-- Connect the `csv_to_ics.py` proof of concept to that export, so a calendar
-  file is built from reviewed results instead of raw pipeline rows
-- Extract more event fields (time, venue, price, event name)
-- Support Instagram caption ingestion alongside the flyer image
+
+- Let the user select a flyer from inside the extension
+- Extract and review an event title from the flyer
+- Extract and review event times, venues, and other details
+- Replace the temporary JPEG-based calendar title with the reviewed event title
+- Support multiple reviewed flyers and batch calendar export
+- Support Instagram caption ingestion alongside flyer images
+
+---
 
 ## Known Limitations
-- Does not yet handle every text-based date format seen in flyers
-- Crop logic is not fully generalized across flyers
-- Year normalization is heuristic and not automated
-- Only the most recent pipeline result reaches the extension, so flyers are
-  reviewed one at a time
-- Nothing yet consumes the reviewed results: both the CSV export and the
-  `csv_to_ics.py` proof of concept still work from pipeline rows, reviewed
-  or not
+
+- Some flyer date formats and layouts are still not handled correctly
+- Crop selection is not fully generalized across flyers
+- Year selection still relies on heuristics
+- The extension handles only the most recent flyer, so flyers are reviewed and exported one at a time
+- Event times are not extracted, so calendar exports are currently all-day placeholders
+- The JPEG filename is temporarily used as the calendar event title
+- The downloaded calendar file always uses the generic name `reviewed_events.ics`
+- Venue, price, and other event details are not yet included in the export
