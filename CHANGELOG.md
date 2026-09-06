@@ -176,12 +176,24 @@ Behavior:
 
 ## Next Steps
 
-- Let the user select a flyer from inside the extension
-- Extract and review an event title from the flyer
-- Extract and review event times, venues, and other details
-- Replace the temporary JPEG-based calendar title with the reviewed event title
-- Support multiple reviewed flyers and batch calendar export
-- Support Instagram caption ingestion alongside flyer images
+- Add a **Select Flyer** or **Upload Flyer** button to the extension
+- Show the selected filename or a small image preview
+- Send the selected image to the Python extraction pipeline
+- Return the extracted result to the popup as `pending`
+- Improve the popup layout, labels, button states, and messages
+- Demonstrate one flyer from selection through review and calendar export
+- Update the README with the completed V1 workflow
+
+---
+
+## Deferred Beyond V1
+
+- Extract event titles, times, venues, prices, and other event details
+- Support multiple flyers, review queues, and batch export
+- Add duplicate detection
+- Extract multiple events from one flyer
+- Support direct Instagram capture or caption ingestion
+- Continue broader OCR and benchmark improvements
 
 ---
 
