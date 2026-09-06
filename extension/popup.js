@@ -198,3 +198,35 @@ document.getElementById("save").addEventListener("click", () => {
     document.getElementById("message").textContent = "Saved!";
   });
 });
+document.getElementById("export").addEventListener("click", () => {
+  if (!reviewIsReady()) {
+    document.getElementById("message").textContent =
+      "No reviewed result is ready.";
+    return;
+  }
+
+  const ics = window.generateReviewedEventsIcs([reviewedResult]);
+
+  if (!ics) {
+    document.getElementById("message").textContent =
+      reviewedResult.reviewStatus === REVIEW_PENDING
+        ? "Accept or edit the result before exporting."
+        : "The reviewed result has no valid event date.";
+    return;
+  }
+
+  const blob = new Blob([ics], {
+    type: "text/calendar;charset=utf-8",
+  });
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = "reviewed_events.ics";
+  link.click();
+
+  URL.revokeObjectURL(downloadUrl);
+
+  document.getElementById("message").textContent =
+    "Calendar file downloaded!";
+});

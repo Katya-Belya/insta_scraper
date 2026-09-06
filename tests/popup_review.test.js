@@ -22,6 +22,11 @@ const POPUP_SOURCE = fs.readFileSync(
   "utf8"
 );
 
+const ICS_SOURCE = fs.readFileSync(
+  path.join(__dirname, "..", "extension", "ics.js"),
+  "utf8"
+);
+
 // Every element popup.js looks up by id.
 const ELEMENT_IDS = [
   "filename",
@@ -35,6 +40,7 @@ const ELEMENT_IDS = [
   "accept",
   "edit",
   "save",
+  "export",
   "message",
 ];
 
@@ -118,18 +124,39 @@ function openPopup(pipelineResult, storageSeed, { deferStorage = false } = {}) {
     },
   };
 
+  const downloads = [];
+
   const sandbox = {
     window: { flyerResult: pipelineResult },
-    document: { getElementById: (id) => elements[id] },
+    document: {
+      getElementById: (id) => elements[id],
+      createElement: () => ({
+        href: "",
+        download: "",
+        click() {
+          downloads.push({
+            href: this.href,
+            filename: this.download,
+          });
+        },
+      }),
+    },
     chrome,
+    Blob,
+    URL: {
+      createObjectURL: () => "blob:test-download",
+      revokeObjectURL: () => {},
+    },
   };
 
   vm.createContext(sandbox);
+  vm.runInContext(ICS_SOURCE, sandbox);
   vm.runInContext(POPUP_SOURCE, sandbox);
 
   return {
     elements,
     store,
+    downloads,
     // The reviewed result as it was persisted, or undefined if the review has
     // not been saved yet.
     stored: () => store.flyerResult,
@@ -425,6 +452,36 @@ test("clicks before the stored review arrives are ignored", () => {
   assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
   assert.strictEqual(popup.elements["accept"].disabled, false);
+});
+
+test("a pending result cannot be exported", () => {
+  const popup = openPopup(PIPELINE_RESULT, {});
+
+  popup.elements["export"].click();
+
+  assert.strictEqual(
+    popup.elements["message"].textContent,
+    "Accept or edit the result before exporting."
+  );
+});
+
+test("an edited result downloads an ICS file", () => {
+  const popup = openPopup(PIPELINE_RESULT, {});
+
+  popup.elements["edit"].click();
+  popup.elements["event-date-input"].value = "2027-03-29";
+  popup.elements["save"].click();
+  popup.elements["export"].click();
+
+  assert.strictEqual(popup.downloads.length, 1);
+  assert.strictEqual(
+    popup.downloads[0].filename,
+    "reviewed_events.ics"
+  );
+  assert.strictEqual(
+    popup.elements["message"].textContent,
+    "Calendar file downloaded!"
+  );
 });
 
 if (failures.length > 0) {
