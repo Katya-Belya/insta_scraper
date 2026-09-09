@@ -49,6 +49,86 @@ March 27
 
 The normalization step converts extracted dates into a consistent machine-readable format suitable for downstream processing and calendar export.
 
+## V1 Workflow
+
+One flyer, one reviewed date, one calendar file, all from the Chrome popup:
+
+```text
+Select Flyer  ->  local extractor  ->  pipeline  ->  reviewed result
+ (popup)          (src/server.py)     (src/*.py)     (Accept / Edit)
+                                                            |
+                                                            v
+                                                  Export to Calendar
+                                                   (reviewed_events.ics)
+```
+
+The extension cannot run Tesseract, so `src/server.py` puts the existing
+pipeline behind a small local HTTP interface. It listens on `127.0.0.1` only
+and answers one route, `POST /extract`, with the same four fields the popup
+already reads: `filename`, `eventDate`, `status`, and `needsReview`.
+
+Loopback keeps other machines out, but any page the user visits could still
+post to a local port, so the server refuses any browser request whose `Origin`
+is not a `chrome-extension://` origin. A request with no `Origin` at all - curl,
+or a test - is served, because a browser always sends one.
+
+### Running it
+
+Start the extractor in a terminal, and leave it running:
+
+```bash
+python -m src.server
+```
+
+Then load `extension/` in Chrome at `chrome://extensions` with Developer mode
+on ("Load unpacked"), open the popup, and click **Select Flyer**.
+
+While a flyer moves through the workflow the popup is in exactly one state:
+
+| State            | What the popup shows                                     |
+| ---------------- | -------------------------------------------------------- |
+| idle             | Nothing has been selected yet                             |
+| processing       | The flyer is being read                                   |
+| success          | A date was extracted and is ready to review               |
+| no date found    | The flyer was read but no date was legible; Edit adds one |
+| invalid file     | The chosen file is not an image the pipeline can read     |
+| connection error | The extractor is not running                              |
+
+An extraction that fails leaves the previous reviewed result untouched, so a
+missing extractor or a stray file selection cannot discard a review.
+
+The extracted result is stored in `chrome.storage.local` with `reviewStatus`
+set to `pending`, which is where the review workflow below picks it up.
+
+### Reviewing and exporting
+
+The popup keeps one canonical reviewed result per flyer:
+
+| Field               | Meaning                                          |
+| ------------------- | ------------------------------------------------ |
+| `filename`          | The flyer the result is about                     |
+| `originalEventDate` | The date the pipeline read, never changed         |
+| `eventDate`         | The date the review settled on                    |
+| `needsReview`       | The pipeline's own "a human should look at this"  |
+| `reviewStatus`      | `pending`, `accepted`, or `edited`                |
+
+**Accept** confirms the extracted date, **Edit** and **Save** replace it, and
+**Export to Calendar** writes `reviewed_events.ics` from the reviewed
+`eventDate`. Only `accepted` and `edited` results can be exported.
+
+The command-line runner still works as it did: `python -m src.pipeline <path>`
+writes `results.csv` and `extension/latest_result.js`, and a popup opened after
+such a run shows that result.
+
+### Running the tests
+
+```bash
+pytest
+node tests/popup_flyer_input.test.js
+node tests/popup_review.test.js
+node tests/ics.test.js
+```
+
 ## Key Findings
 
 - Cropping the date region improves OCR accuracy.
@@ -62,8 +142,10 @@ The normalization step converts extracted dates into a consistent machine-readab
 - Year correction is currently heuristic-based.
 - Time, venue, price, and event-name extraction are not yet implemented as a complete pipeline.
 - Instagram caption ingestion is planned but not yet implemented.
-- ICS export is not yet implemented. CSV export is: a run writes one row
-  per flyer to `results.csv`.
+- Only one flyer at a time is handled: there is no review queue or batch
+  export.
+- Event name, time, venue, and price are still not extracted, so an exported
+  calendar entry is an all-day event named after the flyer's filename.
 
 ## Planned Pipeline
 
@@ -120,6 +202,7 @@ insta_scraper/
 │   ├── results_benchmark_v2.1.csv
 │   └── ...
 ├── extension/
+│   ├── ics.js
 │   ├── manifest.json
 │   ├── popup.html
 │   └── popup.js
@@ -130,12 +213,17 @@ insta_scraper/
 │   ├── __init__.py
 │   ├── dates.py
 │   ├── ocr.py
-│   └── pipeline.py
+│   ├── pipeline.py
+│   └── server.py
 ├── tests/
+│   ├── ics.test.js
+│   ├── popup_flyer_input.test.js
+│   ├── popup_harness.js
 │   ├── popup_review.test.js
 │   ├── test_dates.py
 │   ├── test_ocr.py
-│   └── test_pipeline.py
+│   ├── test_pipeline.py
+│   └── test_server.py
 ├── .gitignore
 ├── .pre-commit-config.yaml
 ├── CHANGELOG.md
@@ -153,15 +241,19 @@ insta_scraper/
 - `data/processed/` is intended for cropped or preprocessed image outputs.
 - `evaluation/` collects ground-truth spreadsheets, benchmark results, and run
   logs from earlier pipeline versions.
-- `extension/` is a Chrome extension that shows the most recent pipeline
-  result and records a review of it.
+- `extension/` is a Chrome extension: the user selects a flyer in its popup,
+  the popup sends it to the local extractor, and the extracted date is
+  reviewed and exported there.
 - `notebooks/` contains exploratory OCR experiments.
 - `src/` contains the pipeline itself: `ocr.py` reads a flyer image, `dates.py`
-  finds and normalizes dates in that text, and `pipeline.py` runs the stages in
-  order and writes the output.
-- `tests/` holds the Python tests, run with `pytest`, alongside
-  `popup_review.test.js`, which covers the extension's review workflow and runs
-  with `node tests/popup_review.test.js`.
+  finds and normalizes dates in that text, `pipeline.py` runs the stages in
+  order and writes the output, and `server.py` exposes that same pipeline over
+  local HTTP so the extension can use it.
+- `tests/` holds the Python tests, run with `pytest`, alongside the extension
+  tests, which run with `node`. `popup_flyer_input.test.js` covers selecting a
+  flyer and extracting it, `popup_review.test.js` covers reviewing the result,
+  `ics.test.js` covers calendar export, and `popup_harness.js` is the stub
+  popup the first two run against.
 
 `data/raw/` and `data/processed/` are gitignored. Ingested flyers are
 third-party content and may identify event organizers and attendees, so they

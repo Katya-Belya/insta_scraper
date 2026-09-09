@@ -24,54 +24,123 @@
     #event-date-input {
       width: 110px;
     }
+
+    /* The real file input is replaced by its label, which can be styled like
+       a button. Hiding it with a class rather than the hidden attribute keeps
+       it focusable from the keyboard. */
+    #file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .select-flyer {
+      display: block;
+      padding: 8px;
+      border: 1px solid #767676;
+      border-radius: 4px;
+      background: #f4f4f4;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .select-flyer:hover {
+      background: #e8e8e8;
+    }
+
+    #file-input:focus + .select-flyer {
+      outline: 2px solid #1a73e8;
+    }
+
+    /* One line describing where the flyer is in the extraction, coloured by
+       how the extraction went. */
+    #state-message {
+      min-height: 1em;
+      color: #444;
+    }
+
+    #state-message.is-working {
+      color: #1a73e8;
+    }
+
+    #state-message.is-success {
+      color: #137333;
+    }
+
+    #state-message.is-error {
+      color: #c5221f;
+    }
+
+    .result {
+      border-top: 1px solid #ddd;
+      margin-top: 12px;
+      padding-top: 4px;
+    }
   </style>
 </head>
 
-  <!-- JavaScript will fill these values from flyerResult -->
-  <p>
-  <strong>File:</strong>
-  <span id="filename"></span>
-</p>
+  <!-- Step 1: choose one flyer. The input is visually replaced by its label,
+       so the user sees a button rather than a bare file field. -->
+  <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp">
+  <label id="select-flyer" class="select-flyer" for="file-input">
+    Select Flyer
+  </label>
 
   <p>
-    <strong>Event date:</strong>
-    <span id="event-date"></span>
-    <!-- Shown instead of the span while the date is being edited -->
-    <input id="event-date-input" type="text" hidden>
+    <strong>File:</strong>
+    <span id="filename"></span>
   </p>
 
-  <!-- Only shown once the reviewed date differs from the one OCR read -->
-  <p id="original-event-date-row" hidden>
-    <strong>Original date:</strong>
-    <span id="original-event-date"></span>
-  </p>
+  <!-- Idle, processing, success, no date found, invalid file, or connection
+       error: whichever state the flyer is in right now. -->
+  <p id="state-message"></p>
 
-  <p>
-    <strong>Status:</strong>
-    <span id="status"></span>
-  </p>
+  <!-- Step 2: review what the pipeline read. Hidden until there is a result. -->
+  <div id="result" class="result" hidden>
+    <p>
+      <strong>Event date:</strong>
+      <span id="event-date"></span>
+      <!-- Shown instead of the span while the date is being edited -->
+      <input id="event-date-input" type="text" hidden>
+    </p>
 
-  <p>
-  <strong>Needs review:</strong>
-  <span id="needs-review"></span>
-</p>
+    <!-- Only shown once the reviewed date differs from the one OCR read -->
+    <p id="original-event-date-row" hidden>
+      <strong>Original date:</strong>
+      <span id="original-event-date"></span>
+    </p>
 
-  <p>
-    <strong>Review status:</strong>
-    <span id="review-status"></span>
-  </p>
+    <!-- Only shown for a result this popup has a pipeline status for -->
+    <p id="status-row">
+      <strong>Status:</strong>
+      <span id="status"></span>
+    </p>
 
-  <!-- Buttons the user will eventually use to review a FlyerResult -->
-  <button id="accept">Accept</button>
-  <button id="edit">Edit</button>
-  <!-- Only shown while the date is being edited -->
-  <button id="save" hidden>Save</button>
-  <button id="export">Export to Calendar</button>
+    <p>
+      <strong>Needs review:</strong>
+      <span id="needs-review"></span>
+    </p>
 
-  <!-- JavaScript writes feedback here after a button is clicked -->
-  <p id="message"></p>
+    <p>
+      <strong>Review status:</strong>
+      <span id="review-status"></span>
+    </p>
 
-  <!-- Load the popup behavior -->
+    <!-- Buttons the user reviews a FlyerResult with -->
+    <button id="accept">Accept</button>
+    <button id="edit">Edit</button>
+    <!-- Only shown while the date is being edited -->
+    <button id="save" hidden>Save</button>
+    <button id="export">Export to Calendar</button>
+
+    <!-- JavaScript writes review feedback here after a button is clicked -->
+    <p id="message"></p>
+  </div>
+
+  <!-- Load the popup behavior.
+       latest_result.js is written by a command-line pipeline run and may not
+       exist; the popup works without it. -->
 <script src="latest_result.js"></script>
 <script src="ics.js"></script>
 <script src="popup.js"></script>

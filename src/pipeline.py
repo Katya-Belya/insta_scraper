@@ -317,14 +317,29 @@ def write_csv(results, output_path):
                 }
             )
 
-def write_latest_result_js(result, path="extension/latest_result.js"):
-    # Convert the latest FlyerResult into the fields used by the popup.
-    flyer_data = {
+def flyer_result_to_popup_data(result: FlyerResult) -> dict:
+    """
+    Convert one FlyerResult into the fields the extension popup reads.
+
+    This is the pipeline's side of the contract with the popup, kept in one
+    place because two callers hand the popup a result: write_latest_result_js()
+    below, which the command-line runner uses, and src/server.py, which answers
+    a flyer the user selected in the popup itself. Both must describe a flyer
+    the same way, or the same flyer would look different depending on how it
+    was processed.
+    """
+
+    return {
         "filename": result.filename,
         "eventDate": result.event_date,
         "status": result.status,
         "needsReview": result.needs_review,
     }
+
+
+def write_latest_result_js(result, path="extension/latest_result.js"):
+    # Convert the latest FlyerResult into the fields used by the popup.
+    flyer_data = flyer_result_to_popup_data(result)
 
     # Write a small JavaScript data file that popup.js can read.
     with open(path, "w", encoding="utf-8") as f:

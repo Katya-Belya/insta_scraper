@@ -5,176 +5,24 @@
  *
  *     node tests/popup_review.test.js
  *
- * The popup is plain browser JavaScript with no build step, so instead of a
- * test framework these tests run popup.js inside a Node vm context and hand it
- * a stub `document`, `window.flyerResult`, and `chrome.storage.local`. That is
- * enough to drive the whole review workflow - click Accept, edit and save a
- * date, reopen the popup - and to inspect exactly what was persisted.
+ * These cover what happens to a result once it is in front of the user:
+ * accepting it, correcting it, persisting it, and exporting it. The flyer
+ * input that produces the result in the first place is covered separately, in
+ * tests/popup_flyer_input.test.js.
+ *
+ * The stub popup these run against lives in tests/popup_harness.js.
  */
 
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
 const assert = require("assert");
 
-const POPUP_SOURCE = fs.readFileSync(
-  path.join(__dirname, "..", "extension", "popup.js"),
-  "utf8"
-);
+const {
+  PIPELINE_RESULT,
+  assertRecord,
+  createRunner,
+  openPopup,
+} = require("./popup_harness");
 
-const ICS_SOURCE = fs.readFileSync(
-  path.join(__dirname, "..", "extension", "ics.js"),
-  "utf8"
-);
-
-// Every element popup.js looks up by id.
-const ELEMENT_IDS = [
-  "filename",
-  "event-date",
-  "event-date-input",
-  "original-event-date-row",
-  "original-event-date",
-  "status",
-  "needs-review",
-  "review-status",
-  "accept",
-  "edit",
-  "save",
-  "export",
-  "message",
-];
-
-// A pipeline result of the shape written into extension/latest_result.js.
-const PIPELINE_RESULT = {
-  filename: "cherry_blossom_market.jpeg",
-  eventDate: "2027-03-27",
-  status: "ok",
-  needsReview: false,
-};
-
-// The stored record is built inside the vm context, so it carries that
-// context's Object prototype and cannot be compared with deepStrictEqual
-// directly. Comparing the JSON round-trip checks the values instead.
-function assertRecord(actual, expected) {
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(actual)), expected);
-}
-
-// Load popup.js against a fresh stub popup.
-//
-// `storageSeed` is what chrome.storage.local already holds, which is how a
-// popup that is being reopened sees an earlier review.
-//
-// With `deferStorage`, the storage read does not answer until the returned
-// `answerStorage()` is called, which is how the popup looks in the moment
-// between opening and the stored review coming back.
-function openPopup(pipelineResult, storageSeed, { deferStorage = false } = {}) {
-  const elements = {};
-
-  for (const id of ELEMENT_IDS) {
-    elements[id] = {
-      id,
-      textContent: "",
-      value: "",
-      hidden: false,
-      disabled: false,
-      listeners: [],
-      addEventListener(type, listener) {
-        this.listeners.push(listener);
-      },
-      click() {
-        // A disabled button fires no click event in a browser, so neither
-        // does this one.
-        if (this.disabled) {
-          return;
-        }
-
-        for (const listener of this.listeners) {
-          listener();
-        }
-      },
-      focus() {},
-    };
-  }
-
-  const store = Object.assign({}, storageSeed);
-  let pendingRead = null;
-
-  const chrome = {
-    storage: {
-      local: {
-        get(key, callback) {
-          const answer = () => {
-            callback(key in store ? { [key]: store[key] } : {});
-          };
-
-          if (deferStorage) {
-            pendingRead = answer;
-          } else {
-            answer();
-          }
-        },
-        set(items, callback) {
-          Object.assign(store, items);
-
-          if (callback) {
-            callback();
-          }
-        },
-      },
-    },
-  };
-
-  const downloads = [];
-
-  const sandbox = {
-    window: { flyerResult: pipelineResult },
-    document: {
-      getElementById: (id) => elements[id],
-      createElement: () => ({
-        href: "",
-        download: "",
-        click() {
-          downloads.push({
-            href: this.href,
-            filename: this.download,
-          });
-        },
-      }),
-    },
-    chrome,
-    Blob,
-    URL: {
-      createObjectURL: () => "blob:test-download",
-      revokeObjectURL: () => {},
-    },
-  };
-
-  vm.createContext(sandbox);
-  vm.runInContext(ICS_SOURCE, sandbox);
-  vm.runInContext(POPUP_SOURCE, sandbox);
-
-  return {
-    elements,
-    store,
-    downloads,
-    // The reviewed result as it was persisted, or undefined if the review has
-    // not been saved yet.
-    stored: () => store.flyerResult,
-    answerStorage: () => pendingRead(),
-  };
-}
-
-const failures = [];
-
-function test(name, run) {
-  try {
-    run();
-    console.log(`ok   ${name}`);
-  } catch (error) {
-    failures.push(name);
-    console.log(`FAIL ${name}\n     ${error.message}`);
-  }
-}
+const { test, report } = createRunner();
 
 test("a fresh flyer opens as an unreviewed result", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
@@ -484,9 +332,4 @@ test("an edited result downloads an ICS file", () => {
   );
 });
 
-if (failures.length > 0) {
-  console.log(`\n${failures.length} failed.`);
-  process.exit(1);
-}
-
-console.log("\nAll checks passed.");
+report();

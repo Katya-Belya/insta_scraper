@@ -160,10 +160,44 @@ Behavior:
 
 ---
 
+## Phase 11: Flyer Input in the Extension
+
+The popup no longer waits for a command-line run: the user selects the flyer.
+
+* Added a **Select Flyer** control to the popup, styled as a button and
+  restricted to image files
+* The selected filename is shown, including for a file that is then refused
+* Added `src/server.py`, a small local HTTP interface around the existing
+  pipeline: `POST /extract` takes the image bytes and an `X-Flyer-Filename`
+  header and answers with the popup's four fields
+* The server binds `127.0.0.1` only and contains no extraction logic of its
+  own; it calls `extract_event_date()` exactly as the command-line runner does
+* Only the extension may call it from a browser: a request from any origin
+  that is not `chrome-extension://<32-character id>` is refused with 403 and
+  granted no CORS access, which is what keeps an ordinary web page from using
+  the local extractor
+* Both callers now build the popup's fields through one function,
+  `flyer_result_to_popup_data()` in `src/pipeline.py`
+* A successful extraction becomes a canonical reviewed result with
+  `reviewStatus` set to `pending` and is stored in `chrome.storage.local`
+* The popup has one clear state at a time: idle, processing, success, no date
+  found, invalid file, connection error, and extractor error
+* A failed extraction - no extractor running, a file that is not an image, an
+  error from the pipeline - leaves the previous reviewed result untouched
+* Accept, Edit/Save, persistence, and calendar export are unchanged, and a
+  popup opened after a command-line run still shows that run's result
+* Added `tests/popup_flyer_input.test.js` for the new popup behavior and
+  `tests/test_server.py` for the HTTP interface; the stub popup the extension
+  tests share now lives in `tests/popup_harness.js`
+
+---
+
 ## Current Status
 
 - The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
-- The most recent pipeline result is also sent to the Chrome extension
+- The user selects one flyer in the Chrome popup, which sends it to the local
+  extractor (`python -m src.server`) and shows the result as `pending`
+- A command-line run still sends its most recent result to the extension too
 - The popup lets the user Accept the extracted date or Edit and Save a correction
 - The reviewed result persists in `chrome.storage.local`
 - Accepted and edited results can be downloaded as `reviewed_events.ics`
@@ -176,13 +210,10 @@ Behavior:
 
 ## Next Steps
 
-- Add a **Select Flyer** or **Upload Flyer** button to the extension
-- Show the selected filename or a small image preview
-- Send the selected image to the Python extraction pipeline
-- Return the extracted result to the popup as `pending`
-- Improve the popup layout, labels, button states, and messages
-- Demonstrate one flyer from selection through review and calendar export
-- Update the README with the completed V1 workflow
+- Demonstrate one flyer from selection through review and calendar export in
+  Chrome, against a running `python -m src.server`
+- Show a small image preview of the selected flyer alongside its filename
+- Continue polishing the popup layout, labels, and wording
 
 ---
 
@@ -202,7 +233,8 @@ Behavior:
 - Some flyer date formats and layouts are still not handled correctly
 - Crop selection is not fully generalized across flyers
 - Year selection still relies on heuristics
-- The extension handles only the most recent flyer, so flyers are reviewed and exported one at a time
+- The extension handles only one flyer at a time, so flyers are reviewed and exported one at a time
+- The popup needs `python -m src.server` running locally; without it, selecting a flyer reports a connection error
 - Event times are not extracted, so calendar exports are currently all-day placeholders
 - The JPEG filename is temporarily used as the calendar event title
 - The downloaded calendar file always uses the generic name `reviewed_events.ics`
