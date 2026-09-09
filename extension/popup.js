@@ -10,12 +10,76 @@ const REVIEW_PENDING = "pending";
 const REVIEW_ACCEPTED = "accepted";
 const REVIEW_EDITED = "edited";
 
-// The real result written by the pipeline into latest_result.js.
+// Where the local Python extractor listens.
 //
-// This object describes what OCR found and is never modified here: the review
-// is kept separately so a pipeline value (such as its own status) can never be
-// overwritten by something the user did in the popup.
-const flyerResult = window.flyerResult;
+// Started with `python -m src.server`, which binds this exact port on the
+// loopback interface. manifest.json grants the popup access to it.
+const EXTRACTOR_URL = "http://127.0.0.1:8756/extract";
+
+// The header the extractor reads the flyer's name from. The body is the image
+// bytes and nothing else.
+const FILENAME_HEADER = "X-Flyer-Filename";
+
+// File types the pipeline can read. Kept in step with IMAGE_EXTENSIONS in
+// src/pipeline.py, which is what the extractor itself checks against.
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
+// Every message the popup can show about the flyer itself, as opposed to the
+// review of it. Exactly one of these is on screen at any time.
+//
+// The tone decides the colour: plain for the states that are just progress,
+// red for the ones the user has to do something about.
+const STATES = {
+  idle: {
+    text: "Select a flyer to extract its event date.",
+    tone: "",
+  },
+  processing: {
+    text: "Reading the flyer...",
+    tone: "is-working",
+  },
+  success: {
+    text: "Found an event date. Review it below.",
+    tone: "is-success",
+  },
+  noDateFound: {
+    text: "No date was readable on this flyer. Use Edit to enter it.",
+    tone: "is-error",
+  },
+  // The states a flyer can fail in name the file they are about. Nothing was
+  // extracted from it, so it is not the flyer shown below, and saying which
+  // file failed is the only way to tell the two apart.
+  invalidFile: {
+    text: (filename) =>
+      `${filename} is not an image. Choose a JPG, JPEG, PNG, or WEBP.`,
+    tone: "is-error",
+  },
+  connectionError: {
+    text: "Cannot reach the extractor. Start it with: python -m src.server",
+    tone: "is-error",
+  },
+  extractionError: {
+    text: (filename) => `${filename} could not be read. Try another image.`,
+    tone: "is-error",
+  },
+};
+
+// The result of the most recent command-line pipeline run, if one has written
+// extension/latest_result.js.
+//
+// The popup no longer depends on that file - a flyer selected here is
+// extracted on demand instead - but a run that wrote it still opens the popup
+// on its result, so the command-line workflow keeps working.
+const latestPipelineResult = window.flyerResult ?? null;
+
+// What the pipeline made of the flyer currently on screen ("ok",
+// "no_date_found", "invalid_date").
+//
+// Deliberately not part of the reviewed result below: it belongs to the
+// pipeline, a review never changes it, and the stored record holds only what
+// the review is about. It is null when the popup restored a review from
+// storage without having run the flyer through the pipeline in this session.
+let pipelineStatus = latestPipelineResult ? latestPipelineResult.status : null;
 
 // The canonical reviewed result the popup maintains.
 //
@@ -32,7 +96,18 @@ const flyerResult = window.flyerResult;
 //
 // originalEventDate is never changed once the result is created, so the date
 // the pipeline read stays available even after the user corrects it.
+//
+// null means there is nothing to review yet: no flyer has been selected and
+// storage held no earlier review.
 let reviewedResult = null;
+
+// How many flyers have been selected so far.
+//
+// Reading a flyer takes a moment, and nothing stops the user from selecting
+// another one while the first is still being read. Each extraction remembers
+// its own number and gives up if a later one has started, so an earlier
+// answer arriving late cannot replace a newer flyer's result.
+let selectionCount = 0;
 
 // Build a fresh, unreviewed result from the pipeline output.
 function createReviewedResult(pipelineResult) {
@@ -71,6 +146,46 @@ function restoreReviewedResult(pipelineResult, storedResult) {
   };
 }
 
+// Turn a stored record into a canonical result when there is no pipeline
+// result to check it against.
+//
+// This is the ordinary case now: the popup is opened, no flyer has been
+// selected in this session, and the review from last time is what should be
+// on screen. Missing fields fall back to values that describe an unreviewed
+// flyer, so a record from an older popup version still opens.
+function restoreStoredResult(storedResult) {
+  return {
+    filename: storedResult.filename,
+    originalEventDate: storedResult.originalEventDate ?? null,
+    eventDate: storedResult.eventDate ?? null,
+    needsReview: storedResult.needsReview ?? false,
+    reviewStatus: storedResult.reviewStatus ?? REVIEW_PENDING,
+  };
+}
+
+// Show one of the STATES above.
+//
+// `filename` is only used by the states whose message names the file that
+// failed.
+function setState(stateName, filename) {
+  const state = STATES[stateName];
+  const element = document.getElementById("state-message");
+
+  element.textContent =
+    typeof state.text === "function" ? state.text(filename) : state.text;
+  element.className = state.tone;
+}
+
+// Name the flyer the popup is currently about.
+//
+// This is the flyer of the result on screen, so that a file which failed to
+// extract - and left the previous result in place - cannot look as though the
+// date below belongs to it. While a flyer is being read it is the selection
+// itself, because it is about to become that result.
+function showFlyerName(filename) {
+  document.getElementById("filename").textContent = filename ?? "";
+}
+
 // Switch the event date between the read-only span and the edit field.
 function setEditing(editing) {
   document.getElementById("event-date").hidden = editing;
@@ -91,7 +206,10 @@ function setEditing(editing) {
 
 // Display the reviewed result in the popup.
 function renderResult(result) {
-  document.getElementById("filename").textContent = result.filename;
+  showFlyerName(result.filename);
+
+  // The review section only means something once there is a result.
+  document.getElementById("result").hidden = false;
 
   document.getElementById("needs-review").textContent =
     result.needsReview ? "Yes" : "No";
@@ -107,7 +225,10 @@ function renderResult(result) {
     result.originalEventDate ?? "";
 
   // What the pipeline made of the flyer, which the review never changes.
-  document.getElementById("status").textContent = flyerResult.status;
+  // A review restored from storage alone has no pipeline status to show, so
+  // the row is hidden rather than left blank.
+  document.getElementById("status-row").hidden = pipelineStatus === null;
+  document.getElementById("status").textContent = pipelineStatus ?? "";
 
   document.getElementById("review-status").textContent = result.reviewStatus;
 
@@ -119,6 +240,14 @@ function renderResult(result) {
   // Accept button is switched off (by setEditing) and the popup says so.
   const accepted = result.reviewStatus === REVIEW_ACCEPTED;
   document.getElementById("message").textContent = accepted ? "Accepted!" : "";
+}
+
+// Show the popup with no flyer to review: the whole review section stays
+// hidden and the only thing on offer is Select Flyer.
+function renderIdle() {
+  showFlyerName(null);
+  document.getElementById("result").hidden = true;
+  setState("idle");
 }
 
 // Write the canonical reviewed result to chrome.storage.local and redraw the
@@ -136,9 +265,23 @@ function saveResult(onSaved) {
 // chrome.storage.local is asynchronous, so the popup is filled in once the
 // stored value comes back.
 chrome.storage.local.get(STORAGE_KEY, (stored) => {
-  reviewedResult = restoreReviewedResult(flyerResult, stored[STORAGE_KEY]);
+  const storedResult = stored[STORAGE_KEY];
+
+  if (latestPipelineResult) {
+    // A command-line run left a result here, so the popup opens on it.
+    reviewedResult = restoreReviewedResult(latestPipelineResult, storedResult);
+  } else if (storedResult && storedResult.filename) {
+    // Nothing new was extracted, so the last review is what to show.
+    reviewedResult = restoreStoredResult(storedResult);
+  }
+
+  if (reviewedResult === null) {
+    renderIdle();
+    return;
+  }
 
   renderResult(reviewedResult);
+  setState(reviewedResult.eventDate ? "success" : "noDateFound");
 });
 
 // The reviewed result is built once chrome.storage.local answers, so a click
@@ -146,6 +289,119 @@ chrome.storage.local.get(STORAGE_KEY, (stored) => {
 function reviewIsReady() {
   return reviewedResult !== null;
 }
+
+// Whether the pipeline is able to read this file at all.
+//
+// The file input already filters by image type, but a user can defeat that
+// filter in the file dialog, so the choice is checked here as well - and the
+// extractor checks it a third time, because it is what actually opens the
+// file.
+function isSupportedImage(file) {
+  if (file.type) {
+    return file.type.startsWith("image/");
+  }
+
+  // Some systems report no MIME type. Fall back to the extension.
+  const name = file.name.toLowerCase();
+  return IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
+// Send one flyer to the local extractor and review whatever comes back.
+//
+// Nothing that fails here disturbs the reviewed result already on screen: it
+// is replaced only once the extractor has actually returned a result for the
+// new flyer.
+async function extractFlyer(file) {
+  // This selection supersedes any extraction still in flight.
+  const selection = (selectionCount += 1);
+  const isCurrentSelection = () => selection === selectionCount;
+
+  // Put the popup back on the flyer the reviewed result is about. Every early
+  // return below leaves that result untouched, so the name has to match it
+  // rather than the file that failed - which the failure message names.
+  const restoreFlyerName = () =>
+    showFlyerName(reviewedResult ? reviewedResult.filename : null);
+
+  if (!isSupportedImage(file)) {
+    restoreFlyerName();
+    setState("invalidFile", file.name);
+    return;
+  }
+
+  // The flyer is on its way to becoming the result, so it is what the popup
+  // is about while it is being read.
+  showFlyerName(file.name);
+  setState("processing");
+
+  let response;
+
+  try {
+    response = await fetch(EXTRACTOR_URL, {
+      method: "POST",
+      headers: {
+        [FILENAME_HEADER]: encodeURIComponent(file.name),
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+  } catch (error) {
+    if (!isCurrentSelection()) {
+      return;
+    }
+
+    // fetch only rejects when the request never got an answer, which here
+    // means the extractor is not running.
+    restoreFlyerName();
+    setState("connectionError");
+    return;
+  }
+
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+
+    if (!isCurrentSelection()) {
+      return;
+    }
+
+    // The extractor rejects a file the pipeline cannot read for the same
+    // reason the popup does, so it produces the same state.
+    restoreFlyerName();
+    setState(
+      failure.error === "unsupported_file_type"
+        ? "invalidFile"
+        : "extractionError",
+      file.name
+    );
+    return;
+  }
+
+  const pipelineResult = await response.json();
+
+  if (!isCurrentSelection()) {
+    return;
+  }
+
+  // A new extraction replaces the reviewed result: this is a different flyer,
+  // and nobody has reviewed it yet.
+  pipelineStatus = pipelineResult.status;
+  reviewedResult = createReviewedResult(pipelineResult);
+
+  saveResult(() => {
+    setState(reviewedResult.eventDate ? "success" : "noDateFound");
+  });
+}
+
+// Selecting a file is what starts an extraction.
+document.getElementById("file-input").addEventListener("change", (event) => {
+  const input = event?.target ?? document.getElementById("file-input");
+  const file = input.files && input.files[0];
+
+  if (!file) {
+    return;
+  }
+
+  extractFlyer(file);
+});
 
 // Find the Accept button and respond when the user clicks it.
 document.getElementById("accept").addEventListener("click", () => {
