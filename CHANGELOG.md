@@ -165,8 +165,12 @@ Behavior:
 The popup no longer waits for a command-line run: the user selects the flyer.
 
 * Added a **Select Flyer** control to the popup, styled as a button and
-  restricted to image files
-* The selected filename is shown, including for a file that is then refused
+  restricted to the image types the pipeline reads: PNG, JPEG, and WebP
+* One flyer is taken per selection: the control accepts a single file, and a
+  selection of several would still extract only the first
+* The filename row names the flyer the result on screen is about, so a file
+  that failed cannot look as though the date below belongs to it; the failed
+  file is named in the message instead
 * Added `src/server.py`, a small local HTTP interface around the existing
   pipeline: `POST /extract` takes the image bytes and an `X-Flyer-Filename`
   header and answers with the popup's four fields
@@ -184,11 +188,30 @@ The popup no longer waits for a command-line run: the user selects the flyer.
   found, invalid file, connection error, and extractor error
 * A failed extraction - no extractor running, a file that is not an image, an
   error from the pipeline - leaves the previous reviewed result untouched
+* A flyer with no readable date is not a failure: it still becomes a `pending`
+  review, with no event date, and the user supplies one through Edit
+* Selecting a second flyer while the first is still being read is safe: each
+  extraction gives up if a later one has started, so a slow answer cannot
+  replace a newer flyer's result
 * Accept, Edit/Save, persistence, and calendar export are unchanged, and a
   popup opened after a command-line run still shows that run's result
 * Added `tests/popup_flyer_input.test.js` for the new popup behavior and
   `tests/test_server.py` for the HTTP interface; the stub popup the extension
   tests share now lives in `tests/popup_harness.js`
+
+Behavior carried over unchanged from the existing pipeline and export:
+
+* A flyer date written without a year is still resolved by the next-occurrence
+  rule, so the extractor and a command-line run infer the same year
+* Calendar exports are still all-day events, and the source filename is still
+  used as the event title
+
+This is a local developer prototype rather than a standalone consumer-ready
+extension: the extension is loaded unpacked, and `python -m src.server` has to
+be running before Select Flyer can extract anything.
+
+Single-flyer input is the V1 scope. Batch and multi-flyer processing remain
+deferred to V2.
 
 ---
 
@@ -210,10 +233,20 @@ The popup no longer waits for a command-line run: the user selects the flyer.
 
 ## Next Steps
 
-- Demonstrate one flyer from selection through review and calendar export in
-  Chrome, against a running `python -m src.server`
-- Show a small image preview of the selected flyer alongside its filename
-- Continue polishing the popup layout, labels, and wording
+- **Finish V1 polish** - continue tightening the popup's layout, labels, and
+  wording, and deliberately test the failure paths: an unsupported file, the
+  extractor not running, a server-side extraction failure, and a flyer with no
+  readable date
+- **Prepare the October 15 demo** - a repeatable five to seven minute run
+  through one flyer in Chrome, from Select Flyer to an imported calendar event
+  against a running `python -m src.server`, plus the presentation that goes
+  with it
+- **Improve the result after the demo** - extract a real event title instead of
+  reusing the filename, extract event times so exports stop being all-day, and
+  make the extractor and extension straightforward for someone else to install
+  and run
+- **Begin V2 batch upload** - accept several flyers at once, review them as a
+  queue, and export multiple events together
 
 ---
 
@@ -236,6 +269,6 @@ The popup no longer waits for a command-line run: the user selects the flyer.
 - The extension handles only one flyer at a time, so flyers are reviewed and exported one at a time
 - The popup needs `python -m src.server` running locally; without it, selecting a flyer reports a connection error
 - Event times are not extracted, so calendar exports are currently all-day placeholders
-- The JPEG filename is temporarily used as the calendar event title
+- The source filename is temporarily used as the calendar event title
 - The downloaded calendar file always uses the generic name `reviewed_events.ics`
 - Venue, price, and other event details are not yet included in the export
