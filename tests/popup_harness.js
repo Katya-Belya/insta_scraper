@@ -3,10 +3,10 @@
  *
  * extension/popup.js is plain browser JavaScript with no build step, so the
  * tests run it inside a Node vm context and hand it a stub `document`,
- * `window.flyerResult`, `chrome.storage.local` and `fetch`. That is enough to
- * drive the whole V1 workflow - select a flyer, extract it, accept or correct
- * the date, export it - and to inspect exactly what was persisted and what was
- * sent to the local extractor.
+ * `window.flyerResult`, `chrome.storage.local`, `chrome.runtime` and
+ * `FileReader`. That is enough to drive the whole V1 workflow - select a
+ * flyer, extract it, accept or correct the date, export it - and to inspect
+ * exactly what was persisted and what was sent to the native host.
  *
  * Used by tests/popup_review.test.js and tests/popup_flyer_input.test.js.
  */
@@ -48,7 +48,7 @@ const ELEMENT_IDS = [
 ];
 
 // A pipeline result of the shape written into extension/latest_result.js and
-// returned by the local extractor.
+// carried in the native host's `result` field.
 const PIPELINE_RESULT = {
   filename: "cherry_blossom_market.jpeg",
   eventDate: "2027-03-27",
@@ -74,18 +74,28 @@ async function flush() {
   }
 }
 
-// Build the response object `fetch` resolves to.
-function jsonResponse(body, { status = 200 } = {}) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  };
+// The answer a native host gives for a flyer it read, as src/native_host.py
+// builds it.
+function hostResult(result) {
+  return { ok: true, result };
+}
+
+// The answer a native host gives for a flyer it refused or could not read.
+function hostFailure(error, message = "") {
+  return { ok: false, error, message };
 }
 
 // A stand-in for the File the file input hands the popup.
+//
+// `bytes` is what the stub FileReader below reads out of it, so it is what
+// ends up base64-encoded in the message to the host.
 function fakeFile(name, { type = "image/jpeg", bytes = "image-bytes" } = {}) {
   return { name, type, bytes };
+}
+
+// The base64 the popup will send for a file made by fakeFile().
+function base64Of(file) {
+  return Buffer.from(file.bytes, "utf8").toString("base64");
 }
 
 // Load popup.js against a fresh stub popup.
@@ -97,17 +107,17 @@ function fakeFile(name, { type = "image/jpeg", bytes = "image-bytes" } = {}) {
 // `answerStorage()` is called, which is how the popup looks in the moment
 // between opening and the stored review coming back.
 //
-// `respondToFetch` stands in for the local Python extractor. It is called
-// with the request the popup made and returns the response, or throws to
-// stand for an extractor that is not running - which is the default, since a
-// test that says nothing about the extractor is not expecting one.
+// `respondToHost` stands in for the Python native host. It is called with the
+// message the popup sent and returns the host's answer, or throws to stand for
+// a host Chrome could not launch - which is the default, since a test that
+// says nothing about the host is not expecting one.
 function openPopup(
   pipelineResult,
   storageSeed,
   {
     deferStorage = false,
-    respondToFetch = () => {
-      throw new TypeError("Failed to fetch");
+    respondToHost = () => {
+      throw new Error("Specified native messaging host not found.");
     },
   } = {}
 ) {
@@ -148,7 +158,41 @@ function openPopup(
   const store = Object.assign({}, storageSeed);
   let pendingRead = null;
 
+  // Every message the popup sent to the native host.
+  const messages = [];
+
+  // The error Chrome reports through chrome.runtime.lastError rather than by
+  // throwing. Set for the duration of the callback, exactly as Chrome does.
+  let lastError;
+
   const chrome = {
+    runtime: {
+      get lastError() {
+        return lastError;
+      },
+
+      // Chrome launches the host, delivers one message, and calls back with
+      // its single answer. A host it cannot launch - or one that dies without
+      // answering - calls back with no response and lastError set.
+      sendNativeMessage(hostName, message, callback) {
+        messages.push({ hostName, message });
+
+        let response;
+
+        try {
+          response = respondToHost(message, hostName);
+        } catch (error) {
+          lastError = { message: error.message };
+          callback(undefined);
+          lastError = undefined;
+          return;
+        }
+
+        Promise.resolve(response).then((answer) => {
+          callback(answer);
+        });
+      },
+    },
     storage: {
       local: {
         get(key, callback) {
@@ -174,7 +218,6 @@ function openPopup(
   };
 
   const downloads = [];
-  const requests = [];
 
   const sandbox = {
     // A run of the command-line pipeline may or may not have left a result
@@ -195,14 +238,26 @@ function openPopup(
     },
     chrome,
     Blob,
+    Error,
     TypeError,
     URL: {
       createObjectURL: () => "blob:test-download",
       revokeObjectURL: () => {},
     },
-    async fetch(url, options) {
-      requests.push({ url, options });
-      return respondToFetch(url, options);
+    // Enough of FileReader for readAsDataURL, which is how the popup turns
+    // the selected file into the base64 it sends. The result carries the same
+    // "data:<type>;base64," prefix a browser produces, because the popup
+    // strips it back off.
+    FileReader: class {
+      readAsDataURL(file) {
+        const encoded = Buffer.from(file.bytes, "utf8").toString("base64");
+
+        // A real FileReader answers asynchronously, and the popup awaits it.
+        Promise.resolve().then(() => {
+          this.result = `data:${file.type || "application/octet-stream"};base64,${encoded}`;
+          this.onload();
+        });
+      }
     },
   };
 
@@ -214,8 +269,8 @@ function openPopup(
     elements,
     store,
     downloads,
-    // Every request the popup made to the local extractor.
-    requests,
+    // Every message the popup sent to the native host.
+    messages,
     // The reviewed result as it was persisted, or undefined if the review has
     // not been saved yet.
     stored: () => store.flyerResult,
@@ -270,9 +325,11 @@ module.exports = {
   ELEMENT_IDS,
   PIPELINE_RESULT,
   assertRecord,
+  base64Of,
   createRunner,
   fakeFile,
   flush,
-  jsonResponse,
+  hostFailure,
+  hostResult,
   openPopup,
 };

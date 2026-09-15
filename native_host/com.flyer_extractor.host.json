@@ -1,0 +1,9 @@
+{
+  "name": "com.flyer_extractor.host",
+  "description": "Runs the flyer extraction pipeline for the Flyer Event Extractor extension.",
+  "path": "ABSOLUTE_PATH_TO/native_host/flyer_extractor_host.py",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID_HERE/"
+  ]
+}

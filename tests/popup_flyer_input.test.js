@@ -6,12 +6,13 @@
  *     node tests/popup_flyer_input.test.js
  *
  * These cover the half of the V1 workflow that happens before a review: the
- * Select Flyer control, the request to the local Python extractor, and each
+ * Select Flyer control, the message sent to the Python native host, and each
  * state the popup can end up in. What the user then does with the result is
  * covered in tests/popup_review.test.js.
  *
  * The stub popup these run against lives in tests/popup_harness.js. The
- * extractor is stubbed there, so no server and no OCR install is needed.
+ * native host is stubbed there, so no host registration and no OCR install is
+ * needed.
  */
 
 const assert = require("assert");
@@ -19,10 +20,12 @@ const assert = require("assert");
 const {
   PIPELINE_RESULT,
   assertRecord,
+  base64Of,
   createRunner,
   fakeFile,
   flush,
-  jsonResponse,
+  hostFailure,
+  hostResult,
   openPopup,
 } = require("./popup_harness");
 
@@ -36,7 +39,7 @@ const SUCCESS = "Found an event date. Review it below.";
 const NO_DATE_FOUND =
   "No date was readable on this flyer. Use Edit to enter it.";
 const CONNECTION_ERROR =
-  "Cannot reach the extractor. Start it with: python -m src.server";
+  "Cannot reach the extractor. Reinstall the native host and reload.";
 
 // The failure messages name the file they are about, because that file is not
 // the flyer the result on screen belongs to.
@@ -45,9 +48,9 @@ const invalidFile = (filename) =>
 const extractionError = (filename) =>
   `${filename} could not be read. Try another image.`;
 
-// An extractor that is running and answers with `result`.
-function extractorReturning(result) {
-  return () => jsonResponse(result);
+// A native host Chrome can launch, which answers with `result`.
+function hostReturning(result) {
+  return () => hostResult(result);
 }
 
 test("a popup with no flyer opens idle", () => {
@@ -97,57 +100,57 @@ test("an idle popup still reopens the last reviewed result", () => {
   assert.strictEqual(popup.elements["accept"].disabled, true);
 });
 
-test("selecting a flyer sends it to the extractor", async () => {
+test("selecting a flyer sends it to the native host", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   const file = fakeFile("cherry_blossom_market.jpeg");
   await popup.selectFlyer(file);
 
-  assert.strictEqual(popup.requests.length, 1);
+  assert.strictEqual(popup.messages.length, 1);
 
-  const request = popup.requests[0];
+  const { hostName, message } = popup.messages[0];
 
-  assert.strictEqual(request.url, "http://127.0.0.1:8756/extract");
-  assert.strictEqual(request.options.method, "POST");
+  // The host name has to match the one in the registered host manifest, or
+  // Chrome has nothing to launch.
+  assert.strictEqual(hostName, "com.flyer_extractor.host");
 
-  // The image itself is the body, and its name travels in a header.
-  assert.strictEqual(request.options.body, file);
-  assert.strictEqual(
-    request.options.headers["X-Flyer-Filename"],
-    "cherry_blossom_market.jpeg"
-  );
-  assert.strictEqual(request.options.headers["Content-Type"], "image/jpeg");
+  // A Native Messaging message is JSON, so the image travels base64-encoded
+  // alongside the name the pipeline will give the result.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(message)), {
+    type: "extract",
+    filename: "cherry_blossom_market.jpeg",
+    imageBase64: base64Of(file),
+  });
 });
 
-test("a filename with characters a header cannot carry is encoded", async () => {
+test("a filename JSON can carry travels unchanged", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
+  // The HTTP transport had to percent-encode this, because a header cannot
+  // carry it. A JSON message can, so the host sees the name the user chose.
   await popup.selectFlyer(fakeFile("café night.png", { type: "image/png" }));
 
-  assert.strictEqual(
-    popup.requests[0].options.headers["X-Flyer-Filename"],
-    "caf%C3%A9%20night.png"
-  );
+  assert.strictEqual(popup.messages[0].message.filename, "café night.png");
 });
 
 test("the selected filename is shown while the flyer is read", async () => {
   const seen = [];
 
   const popup = openPopup(null, {}, {
-    respondToFetch: (url, options) => {
+    respondToHost: () => {
       // Captured mid-request: this is what the popup looks like while the
-      // extractor is working.
+      // host is working.
       seen.push({
         state: popup.elements["state-message"].textContent,
         tone: popup.elements["state-message"].className,
         filename: popup.elements["filename"].textContent,
       });
 
-      return jsonResponse(PIPELINE_RESULT);
+      return hostResult(PIPELINE_RESULT);
     },
   });
 
@@ -164,7 +167,7 @@ test("the selected filename is shown while the flyer is read", async () => {
 
 test("a successful extraction is stored as a pending review", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
@@ -193,7 +196,7 @@ test("a successful extraction is stored as a pending review", async () => {
 
 test("an extracted flyer can be accepted and exported", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
@@ -223,7 +226,7 @@ test("a flyer with no readable date says so and can still be edited", async () =
   };
 
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(noDateFound),
+    respondToHost: hostReturning(noDateFound),
   });
 
   await popup.selectFlyer(fakeFile("mystery.jpeg"));
@@ -255,7 +258,7 @@ test("a flyer with no readable date says so and can still be edited", async () =
 
 test("a file that is not an image is refused before it is sent", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   await popup.selectFlyer(
@@ -270,7 +273,7 @@ test("a file that is not an image is refused before it is sent", async () => {
   assert.strictEqual(popup.elements["state-message"].className, "is-error");
 
   // Nothing was sent, so nothing was extracted.
-  assert.strictEqual(popup.requests.length, 0);
+  assert.strictEqual(popup.messages.length, 0);
   assert.strictEqual(popup.stored(), undefined);
 
   // Nothing was extracted, so there is still no flyer to show.
@@ -280,24 +283,24 @@ test("a file that is not an image is refused before it is sent", async () => {
 
 test("a file with no reported type is judged by its extension", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   // Some systems report no MIME type at all.
   await popup.selectFlyer(fakeFile("flyer.WEBP", { type: "" }));
-  assert.strictEqual(popup.requests.length, 1);
+  assert.strictEqual(popup.messages.length, 1);
 
   await popup.selectFlyer(fakeFile("flyer.txt", { type: "" }));
-  assert.strictEqual(popup.requests.length, 1, "the text file was not sent");
+  assert.strictEqual(popup.messages.length, 1, "the text file was not sent");
   assert.strictEqual(
     popup.elements["state-message"].textContent,
     invalidFile("flyer.txt")
   );
 });
 
-test("an extractor that is not running is reported as such", async () => {
-  // The default stub extractor is one that is not there, which is what fetch
-  // does when nothing is listening.
+test("a host Chrome cannot launch is reported as such", async () => {
+  // The default stub host is one Chrome cannot find, which is what an
+  // unregistered or misregistered host manifest looks like from the popup.
   const popup = openPopup(null, {});
 
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
@@ -312,11 +315,8 @@ test("an extractor that is not running is reported as such", async () => {
 
 test("an extractor error is reported without losing the review", async () => {
   const popup = openPopup(null, {}, {
-    respondToFetch: () =>
-      jsonResponse(
-        { error: "extraction_failed", message: "TesseractNotFoundError" },
-        { status: 500 }
-      ),
+    respondToHost: () =>
+      hostFailure("extraction_failed", "TesseractNotFoundError"),
   });
 
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
@@ -328,17 +328,33 @@ test("an extractor error is reported without losing the review", async () => {
   assert.strictEqual(popup.stored(), undefined);
 });
 
-test("a file the extractor refuses shows the invalid-file state", async () => {
+test("a host with no pipeline behind it is reported as unreachable", async () => {
+  // The host launched, but the interpreter Chrome ran it with has none of the
+  // project's requirements. That is not a problem with the flyer, so the
+  // popup points at the host rather than telling the user to try another
+  // image.
   const popup = openPopup(null, {}, {
-    respondToFetch: () =>
-      jsonResponse(
-        { error: "unsupported_file_type", message: "not a supported image" },
-        { status: 400 }
-      ),
+    respondToHost: () =>
+      hostFailure("pipeline_unavailable", "No module named 'PIL'"),
   });
 
-  // The popup's own check passes on the MIME type, so this is the extractor
-  // having the last word about what the pipeline can read.
+  await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
+
+  assert.strictEqual(
+    popup.elements["state-message"].textContent,
+    CONNECTION_ERROR
+  );
+  assert.strictEqual(popup.stored(), undefined);
+});
+
+test("a file the host refuses shows the invalid-file state", async () => {
+  const popup = openPopup(null, {}, {
+    respondToHost: () =>
+      hostFailure("unsupported_file_type", "not a supported image"),
+  });
+
+  // The popup's own check passes on the MIME type, so this is the host having
+  // the last word about what the pipeline can read.
   await popup.selectFlyer(fakeFile("flyer.gif", { type: "image/gif" }));
 
   assert.strictEqual(
@@ -393,7 +409,7 @@ test("a new extraction replaces a settled review", async () => {
   };
 
   const popup = openPopup(null, stored, {
-    respondToFetch: extractorReturning(PIPELINE_RESULT),
+    respondToHost: hostReturning(PIPELINE_RESULT),
   });
 
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
@@ -423,15 +439,15 @@ test("a second selection wins over one still being read", async () => {
   // The first flyer's answer is held back until the test releases it.
   let releaseFirst;
   const firstAnswer = new Promise((resolve) => {
-    releaseFirst = () => resolve(jsonResponse(slowFlyer));
+    releaseFirst = () => resolve(hostResult(slowFlyer));
   });
 
-  let requestCount = 0;
+  let messageCount = 0;
 
   const popup = openPopup(null, {}, {
-    respondToFetch: () => {
-      requestCount += 1;
-      return requestCount === 1 ? firstAnswer : jsonResponse(PIPELINE_RESULT);
+    respondToHost: () => {
+      messageCount += 1;
+      return messageCount === 1 ? firstAnswer : hostResult(PIPELINE_RESULT);
     },
   });
 
@@ -439,7 +455,7 @@ test("a second selection wins over one still being read", async () => {
   await popup.selectFlyer(fakeFile("slow.jpeg"));
   await popup.selectFlyer(fakeFile("cherry_blossom_market.jpeg"));
 
-  assert.strictEqual(requestCount, 2);
+  assert.strictEqual(messageCount, 2);
 
   // The first answer arrives late, after the second flyer was already shown.
   releaseFirst();
@@ -466,7 +482,7 @@ test("a cancelled file dialog changes nothing", async () => {
   // Cancelling leaves the input with no file, and the popup as it was.
   await popup.selectFlyer(null);
 
-  assert.strictEqual(popup.requests.length, 0);
+  assert.strictEqual(popup.messages.length, 0);
   assert.strictEqual(popup.elements["state-message"].textContent, SUCCESS);
   assert.strictEqual(
     popup.elements["filename"].textContent,
