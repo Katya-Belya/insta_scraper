@@ -10,15 +10,15 @@ const REVIEW_PENDING = "pending";
 const REVIEW_ACCEPTED = "accepted";
 const REVIEW_EDITED = "edited";
 
-// Where the local Python extractor listens.
+// The Native Messaging host that runs the Python extraction pipeline.
 //
-// Started with `python -m src.server`, which binds this exact port on the
-// loopback interface. manifest.json grants the popup access to it.
-const EXTRACTOR_URL = "http://127.0.0.1:8756/extract";
-
-// The header the extractor reads the flyer's name from. The body is the image
-// bytes and nothing else.
-const FILENAME_HEADER = "X-Flyer-Filename";
+// This name is the one in native_host/com.flyer_extractor.host.json, which
+// native_host/install_host.py registers with Chrome. Chrome launches that host
+// itself when a message is sent, so nothing has to be started by hand first.
+//
+// If the host manifest on this machine uses a different name, change it here
+// to match - the two have to agree exactly or Chrome finds no host to launch.
+const NATIVE_HOST_NAME = "com.flyer_extractor.host";
 
 // File types the pipeline can read. Kept in step with IMAGE_EXTENSIONS in
 // src/pipeline.py, which is what the extractor itself checks against.
@@ -55,7 +55,7 @@ const STATES = {
     tone: "is-error",
   },
   connectionError: {
-    text: "Cannot reach the extractor. Start it with: python -m src.server",
+    text: "Cannot reach the extractor. Reinstall the native host and reload.",
     tone: "is-error",
   },
   extractionError: {
@@ -306,6 +306,63 @@ function isSupportedImage(file) {
   return IMAGE_EXTENSIONS.some((extension) => name.endsWith(extension));
 }
 
+// Read the selected file as base64.
+//
+// A Native Messaging message is JSON, so the image cannot travel as raw bytes
+// the way it did in an HTTP body. readAsDataURL gives a string of the form
+// "data:image/jpeg;base64,<payload>", and the host only wants the payload.
+//
+// FileReader is callback-based, so it is wrapped to be awaited alongside the
+// message send below.
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const separator = dataUrl.indexOf(",");
+
+      resolve(separator === -1 ? "" : dataUrl.slice(separator + 1));
+    };
+
+    reader.onerror = () => reject(reader.error ?? new Error("unreadable file"));
+
+    reader.readAsDataURL(file);
+  });
+}
+
+// Send one message to the native host and wait for its single answer.
+//
+// sendNativeMessage starts the host, delivers the message, hands back the
+// reply and lets Chrome shut the host down again - which is exactly the shape
+// of this workflow: one flyer at a time, with nothing left running in between.
+//
+// A host Chrome cannot launch - not registered, wrong path, exited before
+// answering - is reported through chrome.runtime.lastError rather than by
+// throwing, so it is turned into a rejection here and handled like any other
+// failure to reach the extractor.
+function sendToNativeHost(message) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, (response) => {
+      const failure = chrome.runtime.lastError;
+
+      if (failure) {
+        reject(new Error(failure.message));
+        return;
+      }
+
+      // A host that exits without writing anything leaves no lastError on
+      // some Chrome versions, only an undefined response.
+      if (!response) {
+        reject(new Error("The native host returned no response."));
+        return;
+      }
+
+      resolve(response);
+    });
+  });
+}
+
 // Send one flyer to the local extractor and review whatever comes back.
 //
 // Nothing that fails here disturbs the reviewed result already on screen: it
@@ -336,50 +393,51 @@ async function extractFlyer(file) {
   let response;
 
   try {
-    response = await fetch(EXTRACTOR_URL, {
-      method: "POST",
-      headers: {
-        [FILENAME_HEADER]: encodeURIComponent(file.name),
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
+    response = await sendToNativeHost({
+      type: "extract",
+      filename: file.name,
+      imageBase64: await readFileAsBase64(file),
     });
   } catch (error) {
     if (!isCurrentSelection()) {
       return;
     }
 
-    // fetch only rejects when the request never got an answer, which here
-    // means the extractor is not running.
+    // Either Chrome could not launch the host or the file could not be read
+    // here. Both mean no result came back at all, which is the state the user
+    // fixes by reinstalling the host.
     restoreFlyerName();
     setState("connectionError");
     return;
   }
 
-  if (!response.ok) {
-    const failure = await response.json().catch(() => ({}));
-
-    if (!isCurrentSelection()) {
-      return;
-    }
-
-    // The extractor rejects a file the pipeline cannot read for the same
-    // reason the popup does, so it produces the same state.
-    restoreFlyerName();
-    setState(
-      failure.error === "unsupported_file_type"
-        ? "invalidFile"
-        : "extractionError",
-      file.name
-    );
-    return;
-  }
-
-  const pipelineResult = await response.json();
-
   if (!isCurrentSelection()) {
     return;
   }
+
+  if (!response.ok) {
+    restoreFlyerName();
+
+    // The host refuses a file the pipeline cannot read for the same reason
+    // the popup does, so it produces the same state.
+    if (response.error === "unsupported_file_type") {
+      setState("invalidFile", file.name);
+      return;
+    }
+
+    // A host that launched but has no pipeline behind it - registered against
+    // an interpreter without this project's requirements - is not a problem
+    // with the flyer, and reinstalling the host is what fixes it.
+    if (response.error === "pipeline_unavailable") {
+      setState("connectionError");
+      return;
+    }
+
+    setState("extractionError", file.name);
+    return;
+  }
+
+  const pipelineResult = response.result;
 
   // A new extraction replaces the reviewed result: this is a different flyer,
   // and nobody has reviewed it yet.

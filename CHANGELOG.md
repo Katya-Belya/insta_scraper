@@ -192,11 +192,55 @@ The popup no longer waits for a command-line run: the user selects the flyer.
 
 ---
 
+## Phase 12: Native Messaging Replaces the Local Server
+
+The popup no longer needs a server started by hand. Chrome launches the Python
+extractor itself.
+
+* Added `src/native_host.py`, a Chrome Native Messaging host that speaks the
+  4-byte length-prefixed JSON protocol on stdin and stdout
+* Like the HTTP server before it, it holds no extraction logic: it writes the
+  flyer to a temporary file and calls `extract_event_date()` with
+  `use_full_image=True`, exactly as the command-line runner does, then returns
+  `flyer_result_to_popup_data()`
+* The flyer travels base64-encoded inside the message, because a Native
+  Messaging message is JSON and cannot carry raw bytes
+* `{"type": "ping"}` still answers `{"ok": true, "message": "pong"}`, which
+  needs no image and no OCR stack and is the quickest check that the host
+  registration itself is right
+* Every answer is either `{"ok": true, ...}` or
+  `{"ok": false, "error": ..., "message": ...}`; a message that fails costs one
+  answer rather than the connection
+* A host launched with an interpreter that has no Pillow or pytesseract
+  answers `pipeline_unavailable` instead of exiting, which the popup shows as
+  the connection-error state - the likeliest failure, since Chrome inherits
+  none of the shell's environment
+* Added `native_host/`: `flyer_extractor_host.py` is the script Chrome runs,
+  `com.flyer_extractor.host.json` is the manifest template, and
+  `install_host.py` fills in this machine's interpreter, script path, and
+  extension id and registers it with Chrome
+* `extension/popup.js` now sends the flyer with
+  `chrome.runtime.sendNativeMessage()` instead of `fetch` to
+  `http://127.0.0.1:8756/extract`; the manifest trades its loopback
+  `host_permissions` for the `nativeMessaging` permission
+* Everything after the transport is unchanged: the popup's states, the
+  canonical reviewed result, Accept, Edit/Save, persistence, and calendar
+  export all work exactly as before
+* `src/server.py` and `tests/test_server.py` are untouched and still pass; the
+  popup simply no longer calls the server
+* Added `tests/test_native_host.py` for the wire format and the dispatch, and
+  updated `tests/popup_harness.js` to stub `chrome.runtime.sendNativeMessage`
+  and `FileReader` in place of `fetch`
+
+---
+
 ## Current Status
 
 - The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
-- The user selects one flyer in the Chrome popup, which sends it to the local
-  extractor (`python -m src.server`) and shows the result as `pending`
+- The user selects one flyer in the Chrome popup, which sends it to the native
+  host Chrome launches for it and shows the result as `pending`
+- Nothing has to be started in a terminal first: registering the host once with
+  `python native_host/install_host.py <extension-id>` is the whole setup
 - A command-line run still sends its most recent result to the extension too
 - The popup lets the user Accept the extracted date or Edit and Save a correction
 - The reviewed result persists in `chrome.storage.local`
@@ -211,7 +255,8 @@ The popup no longer waits for a command-line run: the user selects the flyer.
 ## Next Steps
 
 - Demonstrate one flyer from selection through review and calendar export in
-  Chrome, against a running `python -m src.server`
+  Chrome, with no server started by hand
+- Decide whether `src/server.py` is retired now that nothing calls it
 - Show a small image preview of the selected flyer alongside its filename
 - Continue polishing the popup layout, labels, and wording
 
@@ -234,7 +279,10 @@ The popup no longer waits for a command-line run: the user selects the flyer.
 - Crop selection is not fully generalized across flyers
 - Year selection still relies on heuristics
 - The extension handles only one flyer at a time, so flyers are reviewed and exported one at a time
-- The popup needs `python -m src.server` running locally; without it, selecting a flyer reports a connection error
+- The native host has to be registered once per machine, and again whenever
+  Chrome assigns the unpacked extension a new id
+- The host must be registered against an interpreter that has this project's
+  requirements installed; Chrome inherits none of the shell's environment
 - Event times are not extracted, so calendar exports are currently all-day placeholders
 - The JPEG filename is temporarily used as the calendar event title
 - The downloaded calendar file always uses the generic name `reviewed_events.ics`
