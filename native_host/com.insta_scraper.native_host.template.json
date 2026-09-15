@@ -1,0 +1,9 @@
+{
+  "name": "com.insta_scraper.native_host",
+  "description": "Flyer Event Extractor native messaging host (ping/pong POC).",
+  "path": "run_host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_YOUR_CHROME_EXTENSION_ID/"
+  ]
+}
