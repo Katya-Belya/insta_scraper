@@ -6,14 +6,14 @@
  * a separate script means the ping test can be deleted in one step once the
  * real transport replaces it.
  *
- * Clicking the button sends {"action": "ping"} to the Python host, which
+ * Clicking the button sends {"type": "ping"} to the Python host, which
  * Chrome starts by itself. Either the host's {"ok": true, "message": "pong"}
  * or the reason it could not be reached is shown under the button.
  */
 
 // Must match "name" in native_host/com.insta_scraper.native_host.json and the
 // registry key register_host.bat writes.
-const NATIVE_HOST_NAME = "com.insta_scraper.native_host";
+const PING_NATIVE_HOST_NAME = "com.insta_scraper.native_host";
 
 // What the popup says while Chrome is starting the host.
 const PINGING_MESSAGE = "Pinging native host...";
@@ -35,8 +35,8 @@ if (pingButton) {
     showPingResult(PINGING_MESSAGE, "is-working");
 
     chrome.runtime.sendNativeMessage(
-      NATIVE_HOST_NAME,
-      { action: "ping" },
+      PING_NATIVE_HOST_NAME,
+      { type: "ping" },
       (response) => {
         // Every way this can fail - host not registered, extension ID missing
         // from allowed_origins, Python not on PATH, host crashed on startup -

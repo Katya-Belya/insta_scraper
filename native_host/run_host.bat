@@ -15,7 +15,7 @@ setlocal
 
 rem -u keeps Python from buffering stdout, so a reply reaches Chrome as soon
 rem as it is written rather than when the process exits.
-python -u "%~dp0ping_host.py"
+"%~dp0..\.venv\Scripts\python.exe" -u "%~dp0flyer_extractor_host.py"
 
 rem If "python" is not on PATH, comment out the line above and use the Windows
 rem launcher instead:

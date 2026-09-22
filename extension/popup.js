@@ -12,13 +12,13 @@ const REVIEW_EDITED = "edited";
 
 // The Native Messaging host that runs the Python extraction pipeline.
 //
-// This name is the one in native_host/com.flyer_extractor.host.json, which
+// This name is the one in native_host/com.insta_scraper.native_host.json, which
 // native_host/install_host.py registers with Chrome. Chrome launches that host
 // itself when a message is sent, so nothing has to be started by hand first.
 //
 // If the host manifest on this machine uses a different name, change it here
 // to match - the two have to agree exactly or Chrome finds no host to launch.
-const NATIVE_HOST_NAME = "com.flyer_extractor.host";
+const NATIVE_HOST_NAME = "com.insta_scraper.native_host";
 
 // File types the pipeline can read. Kept in step with IMAGE_EXTENSIONS in
 // src/pipeline.py, which is what the extractor itself checks against.
