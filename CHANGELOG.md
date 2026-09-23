@@ -234,6 +234,25 @@ extractor itself.
 
 ---
 
+
+## Phase 13: Add to Google Calendar
+
+A reviewed event can now go straight into Google Calendar, with no file to
+download and import.
+
+* Added an **Add to Google Calendar** button to the popup for `accepted` and
+  `edited` results
+* Google Calendar receives the final reviewed `eventDate`, including any
+  correction made by the user, not the date OCR originally read
+* While `reviewStatus` is `pending`, both calendar options are disabled until
+  the user reviews the date
+* Renamed **Export to Calendar** to **Export ICS**, so its label says it
+  downloads a calendar file; the download itself is unchanged
+* Removed the obsolete Native Messaging ping test UI
+
+---
+
+
 ## Current Status
 
 - The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
@@ -244,9 +263,9 @@ extractor itself.
 - A command-line run still sends its most recent result to the extension too
 - The popup lets the user Accept the extracted date or Edit and Save a correction
 - The reviewed result persists in `chrome.storage.local`
-- Accepted and edited results can be downloaded as `reviewed_events.ics`
-- Pending results cannot be exported
-- Calendar export uses the reviewed `eventDate`, not the original OCR date
+- Accepted and edited results can be added directly to Google Calendar or downloaded as `reviewed_events.ics` with **Export ICS**
+- Pending results cannot be sent to a calendar
+- Both calendar options use the reviewed `eventDate`, not the original OCR date
 - The standalone `csv_to_ics.py` remains as an earlier proof of concept; the extension now generates its own calendar file directly in JavaScript
 - OCR remains imperfect, so human review is still part of the workflow
 

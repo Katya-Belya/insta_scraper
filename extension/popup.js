@@ -232,6 +232,11 @@ function renderResult(result) {
 
   document.getElementById("review-status").textContent = result.reviewStatus;
 
+  // Calendar output is available only after the user reviews the result.
+  const reviewPending = result.reviewStatus === REVIEW_PENDING;
+  document.getElementById("export").disabled = reviewPending;
+  document.getElementById("add-to-google-calendar").disabled = reviewPending;
+
   // Showing a result always leaves the date read-only; editing starts only
   // when the user asks for it.
   setEditing(false);
@@ -361,6 +366,39 @@ function sendToNativeHost(message) {
       resolve(response);
     });
   });
+}
+
+// Convert YYYY-MM-DD to the format Google Calendar expects.
+function formatGoogleCalendarDate(dateString) {
+  return dateString.replaceAll("-", "");
+}
+
+// Return the day after an event date for an all-day Google Calendar event.
+function getNextDate(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + 1);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+// Build a prefilled Google Calendar event URL from a reviewed FlyerResult.
+function buildGoogleCalendarUrl(event) {
+  const startDate = formatGoogleCalendarDate(event.eventDate);
+  const endDate = formatGoogleCalendarDate(getNextDate(event.eventDate));
+
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.filename || "Instagram event",
+    dates: `${startDate}/${endDate}`,
+  });
+
+  return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
 }
 
 // Send one flyer to the local extractor and review whatever comes back.
@@ -512,6 +550,7 @@ document.getElementById("save").addEventListener("click", () => {
     document.getElementById("message").textContent = "Saved!";
   });
 });
+// The Export button downloads the reviewed result as an ICS calendar file.
 document.getElementById("export").addEventListener("click", () => {
   if (!reviewIsReady()) {
     document.getElementById("message").textContent =
@@ -544,3 +583,30 @@ document.getElementById("export").addEventListener("click", () => {
   document.getElementById("message").textContent =
     "Calendar file downloaded!";
 });
+
+// The Google Calendar button opens the reviewed result as a prefilled event.
+document
+  .getElementById("add-to-google-calendar")
+  .addEventListener("click", () => {
+    if (!reviewIsReady()) {
+      document.getElementById("message").textContent =
+        "No reviewed result is ready.";
+      return;
+    }
+
+    if (reviewedResult.reviewStatus === REVIEW_PENDING) {
+      document.getElementById("message").textContent =
+        "Accept or edit the result before adding it to Google Calendar.";
+      return;
+    }
+
+    if (!reviewedResult.eventDate) {
+      document.getElementById("message").textContent =
+        "The reviewed result has no valid event date.";
+      return;
+    }
+
+    chrome.tabs.create({
+      url: buildGoogleCalendarUrl(reviewedResult),
+    });
+  });

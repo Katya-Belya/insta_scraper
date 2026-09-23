@@ -77,32 +77,6 @@
       margin-top: 12px;
       padding-top: 4px;
     }
-
-    /* Temporary: the native messaging ping test (POC milestone 1). Delete
-       this block together with the ping markup and native_ping.js. */
-    .native-ping {
-      border-top: 1px solid #ddd;
-      margin-top: 12px;
-      padding-top: 8px;
-    }
-
-    #ping-native-host-result {
-      min-height: 1em;
-      color: #444;
-      word-break: break-word;
-    }
-
-    #ping-native-host-result.is-working {
-      color: #1a73e8;
-    }
-
-    #ping-native-host-result.is-success {
-      color: #137333;
-    }
-
-    #ping-native-host-result.is-error {
-      color: #c5221f;
-    }
   </style>
 </head>
 
@@ -158,20 +132,12 @@
     <button id="edit">Edit</button>
     <!-- Only shown while the date is being edited -->
     <button id="save" hidden>Save</button>
-    <button id="export">Export to Calendar</button>
+    <button id="add-to-google-calendar" disabled>Add to Google Calendar</button>
+    <button id="export" disabled>Export ICS</button>
+
 
     <!-- JavaScript writes review feedback here after a button is clicked -->
     <p id="message"></p>
-  </div>
-
-  <!-- Temporary: native messaging ping test (POC milestone 1).
-       Sends {"action": "ping"} straight to the Python host Chrome starts
-       itself, with no `python -m src.server` running. Not part of the review
-       workflow above; delete this block, native_ping.js and its styles once
-       the real transport replaces it. -->
-  <div class="native-ping">
-    <button id="ping-native-host">Ping Native Host</button>
-    <p id="ping-native-host-result"></p>
   </div>
 
   <!-- Load the popup behavior.
@@ -179,7 +145,5 @@
        exist; the popup works without it. -->
 <script src="latest_result.js"></script>
 <script src="ics.js"></script>
-<!-- Temporary: the ping test's own script, kept out of popup.js. -->
-<script src="native_ping.js"></script>
 <script src="popup.js"></script>
 </body>

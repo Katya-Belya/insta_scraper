@@ -44,6 +44,7 @@ const ELEMENT_IDS = [
   "edit",
   "save",
   "export",
+  "add-to-google-calendar",
   "message",
 ];
 

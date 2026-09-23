@@ -114,7 +114,7 @@ test("selecting a flyer sends it to the native host", async () => {
 
   // The host name has to match the one in the registered host manifest, or
   // Chrome has nothing to launch.
-  assert.strictEqual(hostName, "com.flyer_extractor.host");
+  assert.strictEqual(hostName, "com.insta_scraper.native_host");
 
   // A Native Messaging message is JSON, so the image travels base64-encoded
   // alongside the name the pipeline will give the result.
@@ -299,7 +299,6 @@ test("a file with no reported type is judged by its extension", async () => {
 });
 
 test("a host Chrome cannot launch is reported as such", async () => {
-  // The default stub host is one Chrome cannot find, which is what an
   // unregistered or misregistered host manifest looks like from the popup.
   const popup = openPopup(null, {});
 

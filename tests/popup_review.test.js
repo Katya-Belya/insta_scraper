@@ -305,11 +305,10 @@ test("clicks before the stored review arrives are ignored", () => {
 test("a pending result cannot be exported", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
-  popup.elements["export"].click();
-
+  assert.strictEqual(popup.elements["export"].disabled, true);
   assert.strictEqual(
-    popup.elements["message"].textContent,
-    "Accept or edit the result before exporting."
+    popup.elements["add-to-google-calendar"].disabled,
+    true
   );
 });
 
