@@ -1,5 +1,6 @@
 // Key used to remember the reviewed result in chrome.storage.local.
 const STORAGE_KEY = "flyerResult";
+const JOB_KEY = "flyerExtraction";
 
 // The three states a review can be in.
 //
@@ -9,16 +10,6 @@ const STORAGE_KEY = "flyerResult";
 const REVIEW_PENDING = "pending";
 const REVIEW_ACCEPTED = "accepted";
 const REVIEW_EDITED = "edited";
-
-// The Native Messaging host that runs the Python extraction pipeline.
-//
-// This name is the one in native_host/com.insta_scraper.native_host.json, which
-// native_host/install_host.py registers with Chrome. Chrome launches that host
-// itself when a message is sent, so nothing has to be started by hand first.
-//
-// If the host manifest on this machine uses a different name, change it here
-// to match - the two have to agree exactly or Chrome finds no host to launch.
-const NATIVE_HOST_NAME = "com.insta_scraper.native_host";
 
 // File types the pipeline can read. Kept in step with IMAGE_EXTENSIONS in
 // src/pipeline.py, which is what the extractor itself checks against.
@@ -155,13 +146,8 @@ let pipelineStatus = latestPipelineResult ? latestPipelineResult.status : null;
 // storage held no earlier review.
 let reviewedResult = null;
 
-// How many flyers have been selected so far.
-//
-// Reading a flyer takes a moment, and nothing stops the user from selecting
-// another one while the first is still being read. Each extraction remembers
-// its own number and gives up if a later one has started, so an earlier
-// answer arriving late cannot replace a newer flyer's result.
 let selectionCount = 0;
+let popupReadingFile = false;
 
 // Build a fresh, unreviewed result from the pipeline output.
 function createReviewedResult(pipelineResult) {
@@ -334,27 +320,43 @@ function saveResult(onSaved) {
   });
 }
 
-// chrome.storage.local is asynchronous, so the popup is filled in once the
-// stored value comes back.
-chrome.storage.local.get(STORAGE_KEY, (stored) => {
-  const storedResult = stored[STORAGE_KEY];
-
-  if (latestPipelineResult) {
-    // A command-line run left a result here, so the popup opens on it.
-    reviewedResult = restoreReviewedResult(latestPipelineResult, storedResult);
-  } else if (storedResult && storedResult.filename) {
-    // Nothing new was extracted, so the last review is what to show.
-    reviewedResult = restoreStoredResult(storedResult);
+// Restore both extraction progress and the completed review on every open.
+async function refreshFromStorage() {
+  const stored = await chrome.storage.local.get([STORAGE_KEY, JOB_KEY]);
+  if (popupReadingFile) return;
+  const job = stored[JOB_KEY];
+  const saved = stored[STORAGE_KEY];
+  pipelineStatus = job?.pipelineStatus ?? null;
+  reviewedResult = saved?.filename ? restoreStoredResult(saved) : null;
+  if (!job && latestPipelineResult) {
+    pipelineStatus = latestPipelineResult.status;
+    reviewedResult = restoreReviewedResult(latestPipelineResult, saved);
   }
-
-  if (reviewedResult === null) {
-    renderIdle();
+  const processing = job?.state === "processing";
+  document.getElementById("file-input").disabled = processing;
+  document.getElementById("clear-results").disabled =
+    processing || (!reviewedResult && (!job || job.state === "cleared"));
+  if (processing) {
+    document.getElementById("result").hidden = true;
+    showFlyerName(job.filename);
+    setState("processing");
     return;
   }
-
-  renderResult(reviewedResult);
-  setState(resultStateName());
+  if (reviewedResult) {
+    renderResult(reviewedResult);
+    setState(resultStateName());
+  } else {
+    renderIdle();
+  }
+  if (job?.state === "error") setState(job.errorState, job.filename);
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  // Review saves already redraw the popup. Only job changes require restoration.
+  if (area === "local" && changes[JOB_KEY]) {
+    refreshFromStorage().catch(console.error);
+  }
 });
+refreshFromStorage().catch(console.error);
 
 // The reviewed result is built once chrome.storage.local answers, so a click
 // that lands before then has nothing to review yet.
@@ -403,38 +405,6 @@ function readFileAsBase64(file) {
   });
 }
 
-// Send one message to the native host and wait for its single answer.
-//
-// sendNativeMessage starts the host, delivers the message, hands back the
-// reply and lets Chrome shut the host down again - which is exactly the shape
-// of this workflow: one flyer at a time, with nothing left running in between.
-//
-// A host Chrome cannot launch - not registered, wrong path, exited before
-// answering - is reported through chrome.runtime.lastError rather than by
-// throwing, so it is turned into a rejection here and handled like any other
-// failure to reach the extractor.
-function sendToNativeHost(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, (response) => {
-      const failure = chrome.runtime.lastError;
-
-      if (failure) {
-        reject(new Error(failure.message));
-        return;
-      }
-
-      // A host that exits without writing anything leaves no lastError on
-      // some Chrome versions, only an undefined response.
-      if (!response) {
-        reject(new Error("The native host returned no response."));
-        return;
-      }
-
-      resolve(response);
-    });
-  });
-}
-
 // Convert YYYY-MM-DD to the format Google Calendar expects.
 function formatGoogleCalendarDate(dateString) {
   return dateString.replaceAll("-", "");
@@ -468,90 +438,34 @@ function buildGoogleCalendarUrl(event) {
   return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
 }
 
-// Send one flyer to the local extractor and review whatever comes back.
-//
-// Nothing that fails here disturbs the reviewed result already on screen: it
-// is replaced only once the extractor has actually returned a result for the
-// new flyer.
+// Read the file here, then hand extraction to the background worker.
 async function extractFlyer(file) {
-  // This selection supersedes any extraction still in flight.
-  const selection = (selectionCount += 1);
-  const isCurrentSelection = () => selection === selectionCount;
-
-  // Put the popup back on the flyer the reviewed result is about. Every early
-  // return below leaves that result untouched, so the name has to match it
-  // rather than the file that failed - which the failure message names.
-  const restoreFlyerName = () =>
-    showFlyerName(reviewedResult ? reviewedResult.filename : null);
-
+  const selection = ++selectionCount;
   if (!isSupportedImage(file)) {
-    restoreFlyerName();
     setState("invalidFile", file.name);
     return;
   }
-
-  // The flyer is on its way to becoming the result, so it is what the popup
-  // is about while it is being read.
+  popupReadingFile = true;
+  document.getElementById("file-input").disabled = true;
+  document.getElementById("clear-results").disabled = true;
+  document.getElementById("result").hidden = true;
   showFlyerName(file.name);
   setState("processing");
-
-  let response;
-
   try {
-    response = await sendToNativeHost({
-      type: "extract",
-      filename: file.name,
-      imageBase64: await readFileAsBase64(file),
+    const imageBase64 = await readFileAsBase64(file);
+    if (selection !== selectionCount) return;
+    const reply = await chrome.runtime.sendMessage({
+      type: "startExtraction", filename: file.name, imageBase64,
     });
+    if (!reply?.ok) throw new Error(reply?.error || "Cannot start extraction.");
+    popupReadingFile = false;
+    await refreshFromStorage();
   } catch (error) {
-    if (!isCurrentSelection()) {
-      return;
-    }
-
-    // Either Chrome could not launch the host or the file could not be read
-    // here. Both mean no result came back at all, which is the state the user
-    // fixes by reinstalling the host.
-    restoreFlyerName();
+    popupReadingFile = false;
+    await refreshFromStorage();
     setState("connectionError");
-    return;
+    console.error(error);
   }
-
-  if (!isCurrentSelection()) {
-    return;
-  }
-
-  if (!response.ok) {
-    restoreFlyerName();
-
-    // The host refuses a file the pipeline cannot read for the same reason
-    // the popup does, so it produces the same state.
-    if (response.error === "unsupported_file_type") {
-      setState("invalidFile", file.name);
-      return;
-    }
-
-    // A host that launched but has no pipeline behind it - registered against
-    // an interpreter without this project's requirements - is not a problem
-    // with the flyer, and reinstalling the host is what fixes it.
-    if (response.error === "pipeline_unavailable") {
-      setState("connectionError");
-      return;
-    }
-
-    setState("extractionError", file.name);
-    return;
-  }
-
-  const pipelineResult = response.result;
-
-  // A new extraction replaces the reviewed result: this is a different flyer,
-  // and nobody has reviewed it yet.
-  pipelineStatus = pipelineResult.status;
-  reviewedResult = createReviewedResult(pipelineResult);
-
-  saveResult(() => {
-    setState(resultStateName());
-  });
 }
 
 // Selecting a file is what starts an extraction.
@@ -563,6 +477,8 @@ document.getElementById("file-input").addEventListener("change", (event) => {
     return;
   }
 
+  // Reset the file input so selecting the same flyer again triggers change.
+  input.value = "";
   extractFlyer(file);
 });
 
@@ -677,3 +593,18 @@ document
       url: buildGoogleCalendarUrl(reviewedResult),
     });
   });
+// Clearing is owned by the worker so it cannot race a running extraction.
+document.getElementById("clear-results").addEventListener("click", async () => {
+  if (popupReadingFile) return;
+  document.getElementById("clear-results").disabled = true;
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "clearResults" });
+    if (!reply?.ok) throw new Error(reply?.error || "Cannot clear results.");
+    document.getElementById("file-input").value = "";
+    await refreshFromStorage();
+  } catch (error) {
+    await refreshFromStorage();
+    document.getElementById("state-message").textContent = error.message;
+    document.getElementById("state-message").className = "is-error";
+  }
+});
