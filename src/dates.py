@@ -156,15 +156,21 @@ def _four_digit_year(year_text: str):
     return year if MINYEAR <= year <= MAXYEAR else _REJECT
 
 
-def _named_year(year_text: Optional[str]):
-    """
-    Interpret the digits after a month-name date.
-
-    Returns the year, None for "no year" (nothing there, or a short number that
-    is more likely a time), or _REJECT.
-    """
+def _named_year(year_text: Optional[str], following_text: str = ""):
+    """Interpret a possible year after a month-name date."""
     if year_text is None or len(year_text) <= 3:
         return None
+
+    # A number followed by a numbered street is an address number,
+    # not the event year: "SEPT. 5TH 3718 14TH ST NW".
+    if re.match(
+        r"\s+\d{1,3}(?:ST|ND|RD|TH)?\s+"
+        r"(?:STREET|ST|AVENUE|AVE|ROAD|RD|BOULEVARD|BLVD)\b",
+        following_text,
+        flags=re.IGNORECASE,
+    ):
+        return None
+
     if len(year_text) == 4:
         return _four_digit_year(year_text)
     return _REJECT
@@ -203,7 +209,11 @@ def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
         day = int(match.group("day_full"))
         if match.group("full_short_year") is not None:
             return None  # Apostrophe year: reject the whole date.
-        year = _named_year(match.group("full_year"))
+        year_text = match.group("full_year")
+        year = _named_year(
+            year_text,
+            match.string[match.end("full_year"):] if year_text else "",
+        )
 
     # Abbreviated month match, such as "AUG. 27" or "SEPT. 5TH".
     elif match.group("month_abbr") is not None:
@@ -211,7 +221,11 @@ def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
         day = int(match.group("day_abbr"))
         if match.group("abbr_short_year") is not None:
             return None  # Apostrophe year: reject the whole date.
-        year = _named_year(match.group("abbr_year"))
+        year_text = match.group("abbr_year")
+        year = _named_year(
+            year_text,
+            match.string[match.end("abbr_year"):] if year_text else "",
+        )
 
     # Numeric match, such as "8/27", "8-27" or "8/27/2026".
     else:

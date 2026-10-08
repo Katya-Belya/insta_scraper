@@ -635,3 +635,18 @@ def test_old_printed_date_does_not_override_inferred_upcoming_date():
         extract_dates("September 19, 1999 July 30"), today=today
     )
     assert normalize_date(selected, today=today) == "2027-07-30"
+
+@pytest.mark.parametrize("text", [
+    "RED DERBY . SEPT. 5TH 3718 14TH ST NW",
+    "SEPTEMBER 5 3718 14TH STREET NW",
+])
+def test_address_number_after_date_is_not_a_year(text):
+    extracted = extract_date(text)
+    assert extracted == ExtractedDate("September", 5, "September 5")
+    assert normalize_date(extracted, today=date(2026, 1, 1)) == "2026-09-05"
+
+
+def test_printed_year_before_address_is_preserved():
+    assert extract_date(
+        "SEPT. 5TH 2026 3718 14TH ST NW"
+    ) == ExtractedDate("September", 5, "September 5, 2026", 2026)
