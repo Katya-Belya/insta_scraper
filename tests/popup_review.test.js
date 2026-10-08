@@ -396,6 +396,23 @@ test("a printed date already past is a warning, not an error", () => {
   assert.strictEqual(popup.elements["accept"].disabled, false);
 });
 
+test("a printed date over a year away warns to check the year", () => {
+  const popup = openPopup(
+    resultWithStatus("explicit_future_distant", "3679-03-17"),
+    {}
+  );
+
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Printed date is more than a year away; check the year."
+  );
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+  assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
+  // A warning, not a rejection: the date is shown and can be accepted.
+  assert.strictEqual(popup.elements["event-date"].textContent, "3679-03-17");
+  assert.strictEqual(popup.elements["accept"].disabled, false);
+});
+
 test("an invalid date asks for a correction", () => {
   const popup = openPopup(resultWithStatus("invalid_date", null), {});
 
@@ -429,6 +446,7 @@ for (const [status, eventDate] of [
   ["inferred_year", "2026-10-10"],
   ["inferred_year_distant", "2027-03-27"],
   ["explicit_past_date", "2025-08-24"],
+  ["explicit_future_distant", "3679-03-17"],
 ]) {
   test(`a ${status} result exports only after it is accepted`, () => {
     const popup = openPopup(resultWithStatus(status, eventDate), {});

@@ -90,9 +90,38 @@ def test_explicit_year_before_2000_is_a_flagged_past_date(ocr_text, text):
     assert result.needs_review is True
 
 
-def test_explicit_year_after_2099_is_kept(ocr_text):
-    result = ocr_text("8/24/2150")
-    assert (result.event_date, result.status) == ("2150-08-24", "ok")
+@pytest.mark.parametrize(
+    "text,expected_date,expected_status,expected_review",
+    [
+        # TODAY + 366 days = 2027-10-08; + 367 days = 2027-10-09.
+        ("10/8/2027", "2027-10-08", "ok", False),
+        ("October 9, 2027", "2027-10-09", "explicit_future_distant", True),
+    ],
+)
+def test_explicit_distant_threshold_is_more_than_366_days(
+    ocr_text, text, expected_date, expected_status, expected_review
+):
+    result = ocr_text(text)
+    assert (result.event_date, result.status) == (expected_date, expected_status)
+    assert result.valid is True
+    assert result.needs_review is expected_review
+
+
+@pytest.mark.parametrize(
+    "text,expected_date",
+    [
+        ("3/17/3679", "3679-03-17"),   # OCR noise from the project notes
+        ("8/24/2150", "2150-08-24"),
+    ],
+)
+def test_far_future_explicit_year_is_kept_but_not_trusted(
+    ocr_text, text, expected_date
+):
+    result = ocr_text(text)
+    assert result.event_date == expected_date
+    assert result.status == "explicit_future_distant"
+    assert result.valid is True
+    assert result.needs_review is True
 
 
 @pytest.mark.parametrize("text", ["8/24/19999", "AUGUST 24, 19999", "8/24/0000"])
