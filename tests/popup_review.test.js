@@ -451,14 +451,12 @@ for (const [status, eventDate] of [
   test(`a ${status} result exports only after it is accepted`, () => {
     const popup = openPopup(resultWithStatus(status, eventDate), {});
 
+    assert.strictEqual(popup.elements["export"].disabled, true);
     popup.elements["export"].click();
     assert.strictEqual(popup.downloads.length, 0);
-    assert.strictEqual(
-      popup.elements["message"].textContent,
-      "Accept or edit the result before exporting."
-    );
 
     popup.elements["accept"].click();
+    assert.strictEqual(popup.elements["export"].disabled, false);
     popup.elements["export"].click();
     assert.strictEqual(popup.downloads.length, 1);
     assert.strictEqual(
