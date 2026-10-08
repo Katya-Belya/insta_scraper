@@ -66,7 +66,7 @@ _ABBR = "|".join([*(name[:3] for name in MONTHS), "SEPT"])
 # An apostrophe form ("AUG 24 '26") is captured only so the whole date can be
 # rejected.
 _NAMED_YEAR = (
-    r"(?:\s*,?\s*(?P<{name}_year>\d+)\b"
+    r"(?:\s*[,.]?\s*(?P<{name}_year>\d+)\b"
     r"|\s*['\u2019](?P<{name}_short_year>\d+)\b)?"
 )
 
@@ -316,14 +316,27 @@ def select_event_date(
         resolved = date.fromisoformat(normalized)
         (upcoming if resolved >= today else past).append((resolved, candidate))
 
-    # min()/max() keep the first candidate on ties, matching a stable sort.
+    # Prefer a recent printed date over a distant inferred occurrence.
     if upcoming:
-        return min(upcoming, key=lambda item: item[0])[1]
+        nearest = min(upcoming, key=lambda item: item[0])
+        recent_explicit = [
+            item for item in past
+            if item[1].year is not None
+            and (today - item[0]).days <= 90
+        ]
+        if (
+            nearest[1].year is None
+            and (nearest[0] - today).days > 90
+            and recent_explicit
+        ):
+            return max(recent_explicit, key=lambda item: item[0])[1]
+        return nearest[1]
 
     if past:
         return max(past, key=lambda item: item[0])[1]
 
     return candidates[0]
+
 
 def normalize_date(
     extracted: Optional[ExtractedDate],

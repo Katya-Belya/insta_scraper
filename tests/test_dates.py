@@ -596,3 +596,42 @@ def test_select_returns_an_invalid_candidate_when_all_are_invalid():
     result = select_event_date(candidates, today=date(2026, 8, 20))
     assert result == ExtractedDate("June", 31, "June 31, 2026", 2026)
     assert normalize_date(result, today=date(2026, 8, 20)) is None
+
+
+@pytest.mark.parametrize("text", [
+    "SEPTEMBER 19. 2026",
+    "Sept. 19. 2026",
+    "SEPTEMBER 19. 1999",
+])
+def test_period_before_printed_year_is_preserved(text):
+    year = int(text[-4:])
+    extracted = extract_date(text)
+    assert extracted == ExtractedDate(
+        "September", 19, f"September 19, {year}", year
+    )
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == (
+        f"{year}-09-19"
+    )
+
+def test_recent_printed_event_beats_distant_inferred_post_date():
+    today = date(2026, 10, 7)
+    selected = select_event_date(
+        extract_dates("SEPTEMBER 19. 2026 July 30"), today=today
+    )
+    assert normalize_date(selected, today=today) == "2026-09-19"
+
+
+def test_near_upcoming_date_beats_recent_printed_past_date():
+    today = date(2026, 10, 7)
+    selected = select_event_date(
+        extract_dates("September 19, 2026 October 10"), today=today
+    )
+    assert normalize_date(selected, today=today) == "2026-10-10"
+
+
+def test_old_printed_date_does_not_override_inferred_upcoming_date():
+    today = date(2026, 10, 7)
+    selected = select_event_date(
+        extract_dates("September 19, 1999 July 30"), today=today
+    )
+    assert normalize_date(selected, today=today) == "2027-07-30"
