@@ -46,6 +46,10 @@ const STATES = {
     text: "No date was readable on this flyer. Use Edit to enter it.",
     tone: "is-error",
   },
+  invalidDate: {
+    text: "The date on this flyer is not a real calendar date. Use Edit to correct it.",
+    tone: "is-error",
+  },
   // The states a flyer can fail in name the file they are about. Nothing was
   // extracted from it, so it is not the flyer shown below, and saying which
   // file failed is the only way to tell the two apart.
@@ -64,6 +68,51 @@ const STATES = {
   },
 };
 
+// A readable explanation for every status the pipeline can report (see the
+// STATUS_* values in src/pipeline.py), shown in place of the raw code.
+//
+// `warning` marks the statuses where the date shown may well be wrong - an
+// inferred year that is months away, or a printed date already past - so the
+// explanation is drawn as a warning rather than as plain text.
+const STATUS_EXPLANATIONS = {
+  ok: {
+    text: "Date and year printed on the flyer.",
+    warning: false,
+  },
+  inferred_year: {
+    text:
+      "No year on the flyer. The year shown is the next time this date " +
+      "comes around - confirm it.",
+    warning: false,
+  },
+  inferred_year_distant: {
+    text:
+      "Check the year: the flyer has no year, and the next time this date " +
+      "comes around is months away. The event may already have happened.",
+    warning: true,
+  },
+  explicit_past_date: {
+    text:
+      "The date printed on the flyer has already passed. Check that this is " +
+      "the event you want before accepting.",
+    warning: true,
+  },
+  invalid_date: {
+    text: "The date on the flyer is not a real calendar date.",
+    warning: true,
+  },
+  no_date_found: {
+    text: "No date was found on the flyer.",
+    warning: true,
+  },
+};
+
+// The explanation for one pipeline status. A status this popup does not know
+// - from a newer pipeline, say - is shown as it is rather than hidden.
+function explainStatus(status) {
+  return STATUS_EXPLANATIONS[status] ?? { text: status, warning: false };
+}
+
 // The result of the most recent command-line pipeline run, if one has written
 // extension/latest_result.js.
 //
@@ -72,8 +121,8 @@ const STATES = {
 // on its result, so the command-line workflow keeps working.
 const latestPipelineResult = window.flyerResult ?? null;
 
-// What the pipeline made of the flyer currently on screen ("ok",
-// "no_date_found", "invalid_date").
+// What the pipeline made of the flyer currently on screen: one of the
+// statuses in STATUS_EXPLANATIONS above.
 //
 // Deliberately not part of the reviewed result below: it belongs to the
 // pipeline, a review never changes it, and the stored record holds only what
@@ -228,7 +277,11 @@ function renderResult(result) {
   // A review restored from storage alone has no pipeline status to show, so
   // the row is hidden rather than left blank.
   document.getElementById("status-row").hidden = pipelineStatus === null;
-  document.getElementById("status").textContent = pipelineStatus ?? "";
+  const explanation =
+    pipelineStatus === null ? { text: "", warning: false } : explainStatus(pipelineStatus);
+  const statusElement = document.getElementById("status");
+  statusElement.textContent = explanation.text;
+  statusElement.className = explanation.warning ? "is-warning" : "";
 
   document.getElementById("review-status").textContent = result.reviewStatus;
 
@@ -248,6 +301,15 @@ function renderIdle() {
   showFlyerName(null);
   document.getElementById("result").hidden = true;
   setState("idle");
+}
+
+// Which of the STATES describes the result on screen.
+function resultStateName() {
+  if (reviewedResult.eventDate) {
+    return "success";
+  }
+
+  return pipelineStatus === "invalid_date" ? "invalidDate" : "noDateFound";
 }
 
 // Write the canonical reviewed result to chrome.storage.local and redraw the
@@ -281,7 +343,7 @@ chrome.storage.local.get(STORAGE_KEY, (stored) => {
   }
 
   renderResult(reviewedResult);
-  setState(reviewedResult.eventDate ? "success" : "noDateFound");
+  setState(resultStateName());
 });
 
 // The reviewed result is built once chrome.storage.local answers, so a click
@@ -445,7 +507,7 @@ async function extractFlyer(file) {
   reviewedResult = createReviewedResult(pipelineResult);
 
   saveResult(() => {
-    setState(reviewedResult.eventDate ? "success" : "noDateFound");
+    setState(resultStateName());
   });
 }
 

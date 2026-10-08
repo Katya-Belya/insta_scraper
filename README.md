@@ -79,7 +79,8 @@ A Native Messaging message is JSON, so the image travels base64-encoded:
 ->  {"type": "extract", "filename": "flyer.jpeg", "imageBase64": "..."}
 <-  {"ok": true, "result": {"filename": "flyer.jpeg",
                             "eventDate": "2027-03-27",
-                            "status": "ok", "needsReview": false}}
+                            "status": "inferred_year_distant",
+                            "needsReview": true}}
 ```
 
 Anything that goes wrong answers in one shape instead, which is how the popup
@@ -158,6 +159,23 @@ The popup keeps one canonical reviewed result per flyer:
 | `eventDate`         | The date the review settled on                    |
 | `needsReview`       | The pipeline's own "a human should look at this"  |
 | `reviewStatus`      | `pending`, `accepted`, or `edited`                |
+
+The pipeline's `status` says how much to trust the date, and the popup shows
+it as a sentence rather than the raw code:
+
+| Status                  | Meaning                                            | Needs review |
+| ----------------------- | -------------------------------------------------- | ------------ |
+| `ok`                    | Year printed on the flyer, date today or later     | No           |
+| `inferred_year`         | No year printed; next occurrence, within 90 days   | Yes          |
+| `inferred_year_distant` | No year printed; next occurrence over 90 days away | Yes (warning) |
+| `explicit_past_date`    | Year printed on the flyer, date already passed     | Yes (warning) |
+| `invalid_date`          | A date was found but does not exist (e.g. Feb 29, 2027) | Yes     |
+| `no_date_found`         | No recognizable date                               | Yes          |
+
+A printed four-digit year (0001-9999) is never changed, even when it is in the
+past. Two-digit years (`2/17/26`) and other malformed year suffixes reject the
+whole date rather than being guessed or dropped. The 90-day warning threshold is
+`DISTANT_INFERRED_DAYS` in `src/pipeline.py`.
 
 **Accept** confirms the extracted date, **Edit** and **Save** replace it, and
 **Export to Calendar** writes `reviewed_events.ics` from the reviewed

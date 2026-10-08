@@ -33,6 +33,28 @@ from src.ocr import (
 # File types that the command-line runner is allowed to process.
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
+# A date whose year was inferred (not printed) and that lands more than this
+# many days after today gets the stronger "check the year" warning. It is a
+# warning threshold only: the date is still suggested, never rejected.
+DISTANT_INFERRED_DAYS = 90
+
+# Every status a FlyerResult can carry.
+#
+#   ok                     year printed on the flyer, date today or later
+#   inferred_year          no year printed; next occurrence, within the
+#                          DISTANT_INFERRED_DAYS window
+#   inferred_year_distant  no year printed; next occurrence is further away,
+#                          so the event may already have happened
+#   explicit_past_date     year printed on the flyer, date already passed
+#   invalid_date           a date was found but is not a real calendar date
+#   no_date_found          no recognizable date at all
+STATUS_OK = "ok"
+STATUS_INFERRED_YEAR = "inferred_year"
+STATUS_INFERRED_YEAR_DISTANT = "inferred_year_distant"
+STATUS_EXPLICIT_PAST_DATE = "explicit_past_date"
+STATUS_INVALID_DATE = "invalid_date"
+STATUS_NO_DATE_FOUND = "no_date_found"
+
 
 @dataclass
 class FlyerResult:
@@ -61,21 +83,54 @@ class FlyerResult:
     # None means the date could not be normalized.
     event_date: Optional[str]
 
-    # True when we successfully produced a normalized event date.
+    # True when the event date is a real calendar date. This is only about
+    # calendar validity: a valid date can still need review.
     valid: bool
 
-    # Short explanation of what happened during processing.
-    # Examples: "ok", "no_date_found", or "invalid_date".
+    # Short explanation of what happened during processing: one of the
+    # STATUS_* values above.
     status: str
 
     # True means a human should check this flyer manually.
     needs_review: bool
 
 
+def classify_date(
+    extracted,
+    normalized: Optional[str],
+    today: date,
+    distant_inferred_days: int = DISTANT_INFERRED_DAYS,
+) -> tuple[str, bool]:
+    """
+    Decide the (status, needs_review) pair for one selected date.
+
+    Only a year printed on the flyer and not yet passed is trusted without
+    review. Any inferred year is a suggestion, however close it is.
+    """
+    if extracted is None:
+        return STATUS_NO_DATE_FOUND, True
+
+    if normalized is None:
+        return STATUS_INVALID_DATE, True
+
+    event_date = date.fromisoformat(normalized)
+
+    if extracted.year is None:
+        if (event_date - today).days > distant_inferred_days:
+            return STATUS_INFERRED_YEAR_DISTANT, True
+        return STATUS_INFERRED_YEAR, True
+
+    if event_date < today:
+        return STATUS_EXPLICIT_PAST_DATE, True
+
+    return STATUS_OK, False
+
+
 def extract_event_date(
     image_path,
     today: Optional[date] = None,
     use_full_image: bool = False,
+    distant_inferred_days: int = DISTANT_INFERRED_DAYS,
 ) -> FlyerResult:
     """
     Run the full pipeline over one flyer image.
@@ -89,7 +144,15 @@ Stages, in order:
 
     'use_full_image=True' skips the cherry-blossom-specific crop and runs OCR
     over the entire flyer.
+
+    'distant_inferred_days' is the warning threshold for an inferred year; see
+    DISTANT_INFERRED_DAYS.
     """
+
+    # Resolve "today" once, so selection, normalization and classification all
+    # agree even if the call runs across midnight.
+    if today is None:
+        today = date.today()
 
     # STEP 1: Load the image file into Python.
     image = load_image(image_path)
@@ -155,21 +218,13 @@ Stages, in order:
     )
 
     # STEP 9: Decide whether a person needs to review the result.
-    if extracted is None:
-        # OCR did not give us any date that the parser could recognize.
-        status = "no_date_found"
-        needs_review = True
-
-    elif normalized is None:
-        # We found something that looked like a date, but could not turn
-        # it into a real calendar date.
-        status = "invalid_date"
-        needs_review = True
-
-    else:
-        # We found a date and successfully turned it into YYYY-MM-DD.
-        status = "ok"
-        needs_review = False
+    # See classify_date() for the rules.
+    status, needs_review = classify_date(
+        extracted,
+        normalized,
+        today,
+        distant_inferred_days=distant_inferred_days,
+    )
 
     # STEP 10: Put everything we learned about this flyer into one object.
     return FlyerResult(
@@ -233,6 +288,10 @@ def process_flyers(
     """
 
     results = []
+
+    # One reference date for the whole batch.
+    if today is None:
+        today = date.today()
 
     for image_path in image_paths:
 

@@ -187,7 +187,10 @@ test("a successful extraction is stored as a pending review", async () => {
   assert.strictEqual(popup.elements["result"].hidden, false);
   assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
-  assert.strictEqual(popup.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
   assert.strictEqual(popup.elements["status-row"].hidden, false);
 
   // A pending result is exactly what Accept is for.
@@ -241,7 +244,10 @@ test("a flyer with no readable date says so and can still be edited", async () =
   // and the user can supply one.
   assert.strictEqual(popup.elements["event-date"].textContent, "");
   assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
-  assert.strictEqual(popup.elements["status"].textContent, "no_date_found");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "No date was found on the flyer."
+  );
 
   popup.elements["edit"].click();
   popup.elements["event-date-input"].value = "2027-09-01";
@@ -498,7 +504,10 @@ test("a result from a command-line run still opens the popup", async () => {
   assert.strictEqual(popup.elements["result"].hidden, false);
   assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
   assert.strictEqual(popup.elements["state-message"].textContent, SUCCESS);
-  assert.strictEqual(popup.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
 });
 
 report();
