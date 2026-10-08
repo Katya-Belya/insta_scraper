@@ -18,6 +18,10 @@ The tests are grouped by what they check:
   DATE NORMALIZATION
       Tests how a month and day are turned into a full date with a year.
 
+  EXPLICIT YEARS / SELECTION
+      A printed year is kept as printed; candidate selection prefers upcoming
+      dates and falls back to the most recent past one.
+
 These tests do not require Tesseract or OCR.
 """
 
@@ -141,7 +145,7 @@ def test_recognises_all_twelve_months():
         "no date here",
         "MARCH27",              # no separator: \s+ is required
         "MARCH 271",            # 3-digit day: \b prevents a partial match
-        "2/17/26",              # three-part numeric (with year) is not handled
+        "2/17/26",              # two-digit year: the whole date is rejected
     ],
 )
 def test_returns_none_when_no_recognised_date(text):
@@ -297,19 +301,7 @@ def test_extract_dates_finds_ui_and_event_dates():
 
     assert extract_dates(text) == [
         ExtractedDate("July", 22, "July 22"),
-        ExtractedDate("August", 24, "August 24"),
-    ]
-
-def test_extract_dates_finds_ui_and_event_dates():
-    text = """
-    July 22
-    ASK A D.C. NATIVE
-    Monday, August 24, 2026
-    """
-
-    assert extract_dates(text) == [
-        ExtractedDate("July", 22, "July 22"),
-        ExtractedDate("August", 24, "August 24"),
+        ExtractedDate("August", 24, "August 24, 2026", 2026),
     ]
 
 LEAP_DAY = ExtractedDate("February", 29, "February 29")
@@ -390,7 +382,7 @@ def test_select_event_date_prefers_nearest_upcoming_date():
     )
 
     assert result == ExtractedDate(
-        "August", 24, "August 24"
+        "August", 24, "August 24, 2026", 2026
     )
 
 
@@ -414,3 +406,192 @@ def test_select_event_date_skips_old_ui_date():
 
 def test_select_event_date_returns_none_for_no_candidates():
     assert select_event_date([], today=date(2026, 8, 20)) is None
+
+
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - explicit printed years
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AUGUST 24, 2026",
+        "Monday, August 24, 2026",
+        "AUGUST 24TH 2026",
+        "AUG. 24, 2026",
+        "Aug 24 2026",
+        "8/24/2026",
+        "08/24/2026",
+        "8-24-2026",
+    ],
+)
+def test_named_and_numeric_formats_capture_explicit_year(text):
+    assert extract_date(text) == ExtractedDate(
+        "August", 24, "August 24, 2026", 2026
+    )
+
+
+@pytest.mark.parametrize(
+    "text,year",
+    [
+        ("August 24, 1999", 1999),
+        ("AUG. 24 1999", 1999),
+        ("Aug 24, 2100", 2100),
+        ("August 24, 0999", 999),
+        ("8/24/1999", 1999),
+        ("8-24-1999", 1999),
+        ("08/24/2150", 2150),
+        ("8/24/0001", 1),
+        ("8/24/9999", 9999),
+    ],
+)
+def test_four_digit_years_outside_20xx_are_kept_exactly(text, year):
+    extracted = extract_date(text)
+    assert extracted == ExtractedDate(
+        "August", 24, f"August 24, {year:04d}", year
+    )
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == (
+        f"{year:04d}-08-24"
+    )
+
+
+def test_implausible_four_digit_year_is_still_kept_as_printed():
+    """
+    OCR noise from the project notes. Any four-digit year datetime supports is
+    preserved, so this is a future explicit date, not a rejected one.
+    """
+    assert extract_date("3/17/3679") == ExtractedDate(
+        "March", 17, "March 17, 3679", 3679
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["August 24, 1999", "8/24/1999", "AUGUST 24, 19999", "8/24/19999"],
+)
+def test_year_suffix_is_never_dropped_to_a_yearless_date(text):
+    """Either the year is kept, or nothing is extracted - never a bare Aug 24."""
+    assert all(found.year is not None for found in extract_dates(text))
+
+
+def test_three_argument_constructor_still_means_no_year():
+    assert ExtractedDate("March", 27, "March 27").year is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2/17/26",      # would otherwise risk "17/26" or a guessed century
+        "2/1/26",       # would otherwise risk the fragment "1/26" -> Jan 26
+        "12-25-26",
+        "Aug 24 '26",
+        "AUGUST 24 ’26",
+        "Aug 24 '1999",     # apostrophe form is never a year
+        "8/24/199",         # three-digit third part
+        "8/24/19999",       # five-digit third part
+        "8-24-19999",
+        "AUGUST 24, 19999", # five digits after a month name
+        "Aug. 24 202600",
+        "AUGUST 24, 0000",  # year 0 does not exist in datetime.date
+        "8/24/0000",
+    ],
+)
+def test_unusable_years_reject_the_whole_date(text):
+    assert extract_dates(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "MARCH 27, 10 - 2PM",   # a time, not a two-digit year
+        "MARCH 27 1030PM",      # a time, not a four-digit year
+        "8/4-10pm",             # different separator: not a third part
+    ],
+)
+def test_trailing_numbers_that_are_not_years_leave_a_yearless_date(text):
+    assert extract_date(text).year is None
+
+
+def test_explicit_future_year_is_kept():
+    extracted = extract_date("March 27, 2028")
+    assert normalize_date(extracted, today=date(2026, 3, 1)) == "2028-03-27"
+
+
+def test_explicit_past_year_is_never_rolled_forward():
+    extracted = extract_date("8/24/2025")
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == "2025-08-24"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "February 29, 2027",    # 2027 is not a leap year
+        "2/29/2027",
+        "June 31, 2026",
+        "4/31/2026",
+    ],
+)
+def test_invalid_explicit_date_does_not_fall_back_to_another_year(text):
+    extracted = extract_date(text)
+    assert extracted is not None
+    assert normalize_date(extracted, today=date(2026, 1, 1)) is None
+
+
+def test_explicit_leap_day_in_a_leap_year_is_valid():
+    extracted = extract_date("Feb 29 2028")
+    assert normalize_date(extracted, today=date(2026, 1, 1)) == "2028-02-29"
+
+
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - missing year keeps the next-occurrence rule
+# ---------------------------------------------------------------------------
+
+def test_missing_year_within_the_current_year():
+    extracted = extract_date("NOV 14")
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == "2026-11-14"
+
+
+def test_missing_year_rolls_over_december_to_january():
+    extracted = extract_date("JAN 3")
+    assert normalize_date(extracted, today=date(2026, 12, 20)) == "2027-01-03"
+
+
+def test_recently_passed_month_day_suggests_next_year():
+    extracted = extract_date("OCT 1")
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == "2027-10-01"
+
+
+# ---------------------------------------------------------------------------
+# NEW BEHAVIOUR - selection with explicit years
+# ---------------------------------------------------------------------------
+
+def test_select_prefers_upcoming_over_past_candidates():
+    candidates = extract_dates("Last year: August 24, 2025. This year: 8/30/2026")
+    result = select_event_date(candidates, today=date(2026, 8, 20))
+    assert result.year == 2026 and result.day == 30
+
+
+def test_select_returns_most_recent_past_candidate_when_all_past():
+    candidates = extract_dates("May 1, 2025 and August 24, 2025 and 3/2/2024")
+    result = select_event_date(candidates, today=date(2026, 8, 20))
+    assert result == ExtractedDate("August", 24, "August 24, 2025", 2025)
+
+
+def test_select_upcoming_inferred_beats_past_explicit():
+    candidates = extract_dates("August 1, 2026 SEPT 5")
+    result = select_event_date(candidates, today=date(2026, 8, 20))
+    assert result == ExtractedDate("September", 5, "September 5")
+
+
+def test_select_skips_invalid_candidates_when_a_valid_one_exists():
+    candidates = extract_dates("February 29, 2027 then March 3, 2027")
+    result = select_event_date(candidates, today=date(2026, 8, 20))
+    assert result.month_name == "March"
+
+
+def test_select_returns_an_invalid_candidate_when_all_are_invalid():
+    """Lets the caller say "invalid date" rather than "no date found"."""
+    candidates = extract_dates("June 31, 2026 and 2/29/2027")
+    result = select_event_date(candidates, today=date(2026, 8, 20))
+    assert result == ExtractedDate("June", 31, "June 31, 2026", 2026)
+    assert normalize_date(result, today=date(2026, 8, 20)) is None

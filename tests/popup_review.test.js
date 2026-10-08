@@ -32,7 +32,10 @@ test("a fresh flyer opens as an unreviewed result", () => {
     "cherry_blossom_market.jpeg"
   );
   assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
-  assert.strictEqual(popup.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
   assert.strictEqual(popup.elements["needs-review"].textContent, "No");
 
@@ -65,7 +68,10 @@ test("Accept persists the reviewed result as accepted", () => {
   assert.strictEqual(popup.elements["accept"].disabled, true);
 
   // The pipeline's own status is not what the review writes to.
-  assert.strictEqual(popup.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
 });
 
 test("saving an edited date keeps the date the pipeline read", () => {
@@ -96,7 +102,10 @@ test("saving an edited date keeps the date the pipeline read", () => {
     "2027-03-27"
   );
   assert.strictEqual(popup.elements["message"].textContent, "Saved!");
-  assert.strictEqual(popup.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
 });
 
 test("Accept is off once an edit has been saved", () => {
@@ -154,7 +163,10 @@ test("reopening the popup restores a settled review", () => {
     "2027-03-27"
   );
   assert.strictEqual(reopened.elements["review-status"].textContent, "edited");
-  assert.strictEqual(reopened.elements["status"].textContent, "ok");
+  assert.strictEqual(
+    reopened.elements["status"].textContent,
+    "Date and year printed on the flyer."
+  );
 
   // The review stays settled across reopening, so Accept stays off.
   assert.strictEqual(reopened.elements["accept"].disabled, true);
@@ -265,7 +277,10 @@ test("a flyer with no readable date can be given one", () => {
   // A missing date shows as blank rather than as the text "null".
   assert.strictEqual(popup.elements["event-date"].textContent, "");
   assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
-  assert.strictEqual(popup.elements["status"].textContent, "no_date_found");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "No date was found on the flyer."
+  );
   assert.strictEqual(popup.elements["original-event-date-row"].hidden, true);
 
   popup.elements["edit"].click();
@@ -330,5 +345,109 @@ test("an edited result downloads an ICS file", () => {
     "Calendar file downloaded!"
   );
 });
+
+// Pipeline results for the statuses that carry a review warning. The dates
+// only have to look like what the pipeline would send for that status.
+function resultWithStatus(status, eventDate, needsReview = true) {
+  return { filename: `${status}.jpeg`, eventDate, status, needsReview };
+}
+
+test("an inferred year is explained and needs review", () => {
+  const popup = openPopup(resultWithStatus("inferred_year", "2026-10-10"), {});
+
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "No year on the flyer. The year shown is the next time this date " +
+      "comes around - confirm it."
+  );
+  assert.strictEqual(popup.elements["status"].className, "");
+  assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
+  assert.strictEqual(
+    popup.elements["state-message"].textContent,
+    "Found an event date. Review it below."
+  );
+});
+
+test("a distant inferred year shows the stronger check-the-year warning", () => {
+  const popup = openPopup(
+    resultWithStatus("inferred_year_distant", "2027-03-27"),
+    {}
+  );
+
+  assert.match(popup.elements["status"].textContent, /^Check the year:/);
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+  assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
+});
+
+test("a printed date already past is a warning, not an error", () => {
+  const popup = openPopup(
+    resultWithStatus("explicit_past_date", "2025-08-24"),
+    {}
+  );
+
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "The date printed on the flyer has already passed. Check that this is " +
+      "the event you want before accepting."
+  );
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+  // The date is still a real date, so it is shown for review.
+  assert.strictEqual(popup.elements["event-date"].textContent, "2025-08-24");
+  assert.strictEqual(popup.elements["accept"].disabled, false);
+});
+
+test("an invalid date asks for a correction", () => {
+  const popup = openPopup(resultWithStatus("invalid_date", null), {});
+
+  assert.strictEqual(
+    popup.elements["state-message"].textContent,
+    "The date on this flyer is not a real calendar date. Use Edit to correct it."
+  );
+  assert.strictEqual(popup.elements["state-message"].className, "is-error");
+  assert.strictEqual(
+    popup.elements["status"].textContent,
+    "The date on the flyer is not a real calendar date."
+  );
+
+  // Accepting a missing date still exports nothing.
+  popup.elements["accept"].click();
+  popup.elements["export"].click();
+  assert.strictEqual(popup.downloads.length, 0);
+  assert.strictEqual(
+    popup.elements["message"].textContent,
+    "The reviewed result has no valid event date."
+  );
+});
+
+test("an unknown status is shown as it is", () => {
+  const popup = openPopup(resultWithStatus("something_new", "2027-01-01"), {});
+
+  assert.strictEqual(popup.elements["status"].textContent, "something_new");
+});
+
+for (const [status, eventDate] of [
+  ["inferred_year", "2026-10-10"],
+  ["inferred_year_distant", "2027-03-27"],
+  ["explicit_past_date", "2025-08-24"],
+]) {
+  test(`a ${status} result exports only after it is accepted`, () => {
+    const popup = openPopup(resultWithStatus(status, eventDate), {});
+
+    popup.elements["export"].click();
+    assert.strictEqual(popup.downloads.length, 0);
+    assert.strictEqual(
+      popup.elements["message"].textContent,
+      "Accept or edit the result before exporting."
+    );
+
+    popup.elements["accept"].click();
+    popup.elements["export"].click();
+    assert.strictEqual(popup.downloads.length, 1);
+    assert.strictEqual(
+      popup.elements["message"].textContent,
+      "Calendar file downloaded!"
+    );
+  });
+}
 
 report();

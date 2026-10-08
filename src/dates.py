@@ -11,12 +11,31 @@ The module separates three responsibilities:
 
 Matches full month names, abbreviated month names (with optional trailing
 period and flexible punctuation/spacing), and numeric month/day forms
-(M/D and M-D).
+(M/D and M-D), each with an optional printed year.
 
-Three-part numeric dates with a year (e.g. 2/17/26) are not handled.
+Explicit years:
+  - Any four-digit year that datetime.date supports (0001-9999) is kept
+    exactly as printed, past or future: "AUGUST 24, 1999", "Aug. 24 2026",
+    "8/24/1999", "8-24-2026". A past year is flagged for review downstream;
+    it is never dropped or moved.
+  - Month-name dates take the year after the day. Numeric dates take it as a
+    third part using the same separator as the first two.
+  - Two-digit years are deliberately NOT interpreted. "2/17/26" and
+    "Aug 24 '26" are rejected as a whole: guessing a century would turn an OCR
+    misread into a confident date, and dropping the year would turn a dated
+    flyer into a yearless one.
+  - Any other year-shaped suffix also rejects the whole date rather than
+    leaving a yearless fragment: a numeric third part that is not exactly
+    four digits ("8/24/199", "8/24/19999"), a run of five or more digits after
+    a month-name date ("AUGUST 24, 19999"), or the year 0000, which
+    datetime.date cannot represent.
+  - One to three digits after a month-name date ("MARCH 27, 10 - 2PM") are
+    left alone rather than read as a year, because flyers commonly follow the
+    date with a time. That date is treated as yearless, which always requires
+    review. So is a four-digit run glued to letters ("MARCH 27 1030PM").
 """
 
-from datetime import date
+from datetime import MAXYEAR, MINYEAR, date
 from typing import NamedTuple, Optional
 import re
 
@@ -42,16 +61,38 @@ MONTH_LOOKUP["SEPT"] = "September"
 _FULL = "|".join(MONTHS)
 _ABBR = "|".join([*(name[:3] for name in MONTHS), "SEPT"])
 
+# Optional year after a month-name date. Every digit run is captured in full,
+# so a malformed year cannot be half-read; _named_year() decides what it is.
+# An apostrophe form ("AUG 24 '26") is captured only so the whole date can be
+# rejected.
+_NAMED_YEAR = (
+    r"(?:\s*,?\s*(?P<{name}_year>\d+)\b"
+    r"|\s*['\u2019](?P<{name}_short_year>\d+)\b)?"
+)
+
 # Matches dates such as:
 #   MARCH 27 / MARCH 27th / March 27t   (full month, OCR ordinals)
 #   APR 25 / APR. 25 / AUG.12           (abbrev, optional period, flexible space)
+#   AUGUST 24, 2026 / AUG 24 2026       (month name with a printed year)
 #   (8/4) / 8-4                         (numeric month/day, no year)
+#   8/24/2026 / 8-24-2026               (numeric with a printed year)
+#
+# A numeric third part is always consumed in full (\d+), whatever its length,
+# so "2/17/26" can never be re-read as the yearless fragment "17/26" or
+# "1/26". _extracted_date_from_match decides whether that part is a usable year.
 DATE_RE = re.compile(
     rf"\b({_FULL})[\s.,:;()\-]+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
-    rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
-    rf"|\b(?P<month_num>\d{{1,2}})[/\-](?P<day_num>\d{{1,2}})(?!/\d)\b",
+    + _NAMED_YEAR.format(name="full")
+    + rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    + _NAMED_YEAR.format(name="abbr")
+    + r"|\b(?P<month_num>\d{1,2})(?P<sep>[/\-])(?P<day_num>\d{1,2})"
+    r"(?:(?P=sep)(?P<year_num>\d+)|(?!\d)(?!(?P=sep)\d))",
     flags=re.IGNORECASE,
 )
+
+# Returned by the year helpers below when a year-shaped suffix makes the whole
+# date unusable.
+_REJECT = object()
 
 # How many years forward normalize_date will look for a valid occurrence.
 #
@@ -69,13 +110,15 @@ class ExtractedDate(NamedTuple):
     """
     Structured representation of a date found in OCR text.
 
-    The parser extracts only month and day. The year is deliberately handled
-    later by normalize_date(), because many event flyers omit the year.
+    `year` is the year printed on the flyer, or None when the flyer omits it.
+    A missing year is inferred later by normalize_date(); a printed one is
+    always kept as printed.
     """
 
     month_name: str  # Canonical full name, e.g. "August"
     day: int         # Numeric day, e.g. 27
-    text: str        # Human-readable normalized form, e.g. "August 27"
+    text: str        # Human-readable form, e.g. "August 27" or "August 27, 2026"
+    year: Optional[int] = None  # Explicit printed year, e.g. 2026
 
 
 def _canonical_month_name(token: str) -> Optional[str]:
@@ -107,6 +150,40 @@ def _month_name_from_number(month: int) -> Optional[str]:
     return None
 
 
+def _four_digit_year(year_text: str):
+    """A four-digit printed year, or _REJECT if datetime.date cannot hold it."""
+    year = int(year_text)
+    return year if MINYEAR <= year <= MAXYEAR else _REJECT
+
+
+def _named_year(year_text: Optional[str]):
+    """
+    Interpret the digits after a month-name date.
+
+    Returns the year, None for "no year" (nothing there, or a short number that
+    is more likely a time), or _REJECT.
+    """
+    if year_text is None or len(year_text) <= 3:
+        return None
+    if len(year_text) == 4:
+        return _four_digit_year(year_text)
+    return _REJECT
+
+
+def _numeric_year(year_text: Optional[str]):
+    """
+    Interpret the third part of a numeric date.
+
+    Returns the year, None when there is no third part, or _REJECT for
+    anything that is not a four-digit year ("2/17/26", "8/24/19999").
+    """
+    if year_text is None:
+        return None
+    if len(year_text) == 4:
+        return _four_digit_year(year_text)
+    return _REJECT
+
+
 def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
     """
     Turn one regex match into an ExtractedDate.
@@ -120,32 +197,48 @@ def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
     representation so the rest of the pipeline can treat them identically.
     """
 
-    # Full month-name match, such as "AUGUST 27".
+    # Full month-name match, such as "AUGUST 27" or "AUGUST 27, 2026".
     if match.group(1) is not None:
         month_name = _canonical_month_name(match.group(1))
         day = int(match.group("day_full"))
+        if match.group("full_short_year") is not None:
+            return None  # Apostrophe year: reject the whole date.
+        year = _named_year(match.group("full_year"))
 
     # Abbreviated month match, such as "AUG. 27" or "SEPT. 5TH".
     elif match.group("month_abbr") is not None:
         month_name = _canonical_month_name(match.group("month_abbr"))
         day = int(match.group("day_abbr"))
+        if match.group("abbr_short_year") is not None:
+            return None  # Apostrophe year: reject the whole date.
+        year = _named_year(match.group("abbr_year"))
 
-    # Numeric match, such as "8/27" or "8-27".
+    # Numeric match, such as "8/27", "8-27" or "8/27/2026".
     else:
         month_name = _month_name_from_number(
             int(match.group("month_num"))
         )
         day = int(match.group("day_num"))
+        year = _numeric_year(match.group("year_num"))
+
+    # A year-shaped suffix that is not a usable year rejects the whole date
+    # rather than guessing a year or quietly dropping it.
+    if year is _REJECT:
+        return None
 
     # A regex match is not useful if its month cannot be interpreted.
     if month_name is None:
         return None
 
+    # Four digits, as printed: year 999 would otherwise read "999".
+    text = f"{month_name} {day}" if year is None else f"{month_name} {day}, {year:04d}"
+
     # All supported input formats leave this function in one standard form.
     return ExtractedDate(
         month_name=month_name,
         day=day,
-        text=f"{month_name} {day}",
+        text=text,
+        year=year,
     )
 
 
@@ -189,10 +282,21 @@ def select_event_date(
     today: Optional[date] = None,
 ) -> Optional[ExtractedDate]:
     """
-    Choose the candidate whose next occurrence is closest to today.
+    Choose the most plausible event date among the candidates.
 
     This helps when OCR text contains several dates, such as an older
     Instagram/UI date followed by the actual upcoming event date.
+
+    In order of preference:
+      1. The earliest valid candidate on or after `today`. A yearless candidate
+         always lands here, because its year is inferred as the next
+         occurrence.
+      2. If every valid candidate is in the past (only possible with a printed
+         year), the most recent one. The caller flags it for review.
+      3. If no candidate is a real calendar date, the first candidate, so the
+         caller can report it as an invalid date rather than as no date.
+
+    Returns None only when there are no candidates at all.
     """
     if not candidates:
         return None
@@ -200,22 +304,26 @@ def select_event_date(
     if today is None:
         today = date.today()
 
-    ranked = []
+    upcoming = []
+    past = []
 
     for candidate in candidates:
         normalized = normalize_date(candidate, today=today)
 
-        if normalized is not None:
-            ranked.append(
-                (date.fromisoformat(normalized), candidate)
-            )
+        if normalized is None:
+            continue
 
-    if not ranked:
-        return None
+        resolved = date.fromisoformat(normalized)
+        (upcoming if resolved >= today else past).append((resolved, candidate))
 
-    # Earliest upcoming normalized date wins.
-    ranked.sort(key=lambda item: item[0])
-    return ranked[0][1]
+    # min()/max() keep the first candidate on ties, matching a stable sort.
+    if upcoming:
+        return min(upcoming, key=lambda item: item[0])[1]
+
+    if past:
+        return max(past, key=lambda item: item[0])[1]
+
+    return candidates[0]
 
 def normalize_date(
     extracted: Optional[ExtractedDate],
@@ -223,9 +331,14 @@ def normalize_date(
     search_years: int = SEARCH_YEARS,
 ) -> Optional[str]:
     """
-    Resolve a month/day pair to an ISO date string (YYYY-MM-DD).
+    Resolve an extracted date to an ISO date string (YYYY-MM-DD).
 
-    Flyers usually omit the year, so the year is inferred with a next-occurrence
+    A year printed on the flyer is used as is, even if that date is in the
+    past: rolling it forward would invent an event that was never announced.
+    If the printed date does not exist (e.g. February 29, 2027) the result is
+    None; it never falls back to another year.
+
+    Flyers usually omit the year, so a missing year is inferred with a next-occurrence
     rule: the earliest year, starting from `today`'s, in which the month/day is
     a real calendar date that has not already passed. A date falling exactly on
     `today` counts as upcoming.
@@ -233,8 +346,9 @@ def normalize_date(
     `today` defaults to date.today(). Pass it explicitly for reproducible
     results -- with the default, output depends on when the code is run.
 
-    Returns None when no date was extracted, or when the month/day is not a
-    valid calendar date within the search window (e.g. "June 31").
+    Returns None when no date was extracted, when an explicit date is not a
+    real calendar date, or when a yearless month/day is not a valid calendar
+    date within the search window (e.g. "June 31").
     """
     if extracted is None:
         return None
@@ -244,6 +358,12 @@ def normalize_date(
     month = MONTH_NUMBERS.get(extracted.month_name.upper())
     if month is None:
         return None
+
+    if extracted.year is not None:
+        try:
+            return date(extracted.year, month, extracted.day).isoformat()
+        except ValueError:
+            return None
 
     for offset in range(search_years):
         try:
