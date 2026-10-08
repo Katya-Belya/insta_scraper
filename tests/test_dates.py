@@ -455,14 +455,15 @@ def test_four_digit_years_outside_20xx_are_kept_exactly(text, year):
     )
 
 
-def test_implausible_four_digit_year_is_still_kept_as_printed():
+def test_implausible_four_digit_year_is_preserved_not_rejected():
     """
-    OCR noise from the project notes. Any four-digit year datetime supports is
-    preserved, so this is a future explicit date, not a rejected one.
+    OCR noise from the project notes. The parser keeps the printed year rather
+    than rejecting or rewriting it; the pipeline is what flags it for review
+    (see test_pipeline.py: explicit_future_distant).
     """
-    assert extract_date("3/17/3679") == ExtractedDate(
-        "March", 17, "March 17, 3679", 3679
-    )
+    extracted = extract_date("3/17/3679")
+    assert extracted == ExtractedDate("March", 17, "March 17, 3679", 3679)
+    assert normalize_date(extracted, today=date(2026, 10, 7)) == "3679-03-17"
 
 
 @pytest.mark.parametrize(

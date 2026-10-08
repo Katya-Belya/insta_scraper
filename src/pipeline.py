@@ -38,19 +38,30 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 # warning threshold only: the date is still suggested, never rejected.
 DISTANT_INFERRED_DAYS = 90
 
+# A printed date more than this many days after today is kept as printed but
+# flagged: a year that far out is more often an OCR misread ("3/17/3679") than
+# a real announcement. 366 so that a date exactly one year ahead, even across
+# a leap day, is not flagged. A warning only, never a rejection.
+DISTANT_EXPLICIT_DAYS = 366
+
 # Every status a FlyerResult can carry.
 #
-#   ok                     year printed on the flyer, date today or later
+#   ok                     year printed on the flyer, date from today up to
+#                          DISTANT_EXPLICIT_DAYS ahead
 #   inferred_year          no year printed; next occurrence, within the
 #                          DISTANT_INFERRED_DAYS window
 #   inferred_year_distant  no year printed; next occurrence is further away,
 #                          so the event may already have happened
+#   explicit_future_distant
+#                          year printed on the flyer, date more than
+#                          DISTANT_EXPLICIT_DAYS ahead; the year may be misread
 #   explicit_past_date     year printed on the flyer, date already passed
 #   invalid_date           a date was found but is not a real calendar date
 #   no_date_found          no recognizable date at all
 STATUS_OK = "ok"
 STATUS_INFERRED_YEAR = "inferred_year"
 STATUS_INFERRED_YEAR_DISTANT = "inferred_year_distant"
+STATUS_EXPLICIT_FUTURE_DISTANT = "explicit_future_distant"
 STATUS_EXPLICIT_PAST_DATE = "explicit_past_date"
 STATUS_INVALID_DATE = "invalid_date"
 STATUS_NO_DATE_FOUND = "no_date_found"
@@ -100,12 +111,14 @@ def classify_date(
     normalized: Optional[str],
     today: date,
     distant_inferred_days: int = DISTANT_INFERRED_DAYS,
+    distant_explicit_days: int = DISTANT_EXPLICIT_DAYS,
 ) -> tuple[str, bool]:
     """
     Decide the (status, needs_review) pair for one selected date.
 
-    Only a year printed on the flyer and not yet passed is trusted without
-    review. Any inferred year is a suggestion, however close it is.
+    Only a printed year landing between today and distant_explicit_days ahead
+    is trusted without review. Any inferred year is a suggestion, however
+    close it is.
     """
     if extracted is None:
         return STATUS_NO_DATE_FOUND, True
@@ -122,6 +135,9 @@ def classify_date(
 
     if event_date < today:
         return STATUS_EXPLICIT_PAST_DATE, True
+
+    if (event_date - today).days > distant_explicit_days:
+        return STATUS_EXPLICIT_FUTURE_DISTANT, True
 
     return STATUS_OK, False
 

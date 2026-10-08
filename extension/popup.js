@@ -72,7 +72,8 @@ const STATES = {
 // STATUS_* values in src/pipeline.py), shown in place of the raw code.
 //
 // `warning` marks the statuses where the date shown may well be wrong - an
-// inferred year that is months away, or a printed date already past - so the
+// inferred year that is months away, a printed date more than a year away, or
+// a printed date already past - so the
 // explanation is drawn as a warning rather than as plain text.
 const STATUS_EXPLANATIONS = {
   ok: {
@@ -89,6 +90,10 @@ const STATUS_EXPLANATIONS = {
     text:
       "Check the year: the flyer has no year, and the next time this date " +
       "comes around is months away. The event may already have happened.",
+    warning: true,
+  },
+  explicit_future_distant: {
+    text: "Printed date is more than a year away; check the year.",
     warning: true,
   },
   explicit_past_date: {
