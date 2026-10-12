@@ -240,18 +240,19 @@ extractor itself.
 A reviewed event can now go straight into Google Calendar, with no file to
 download and import.
 
-* Added an **Add to Google Calendar** button to the popup for `accepted` and
-  `edited` results
-* Google Calendar receives the final reviewed `eventDate`, including any
-  correction made by the user, not the date OCR originally read
-* While `reviewStatus` is `pending`, both calendar options are disabled until
-  the user reviews the date
-* Renamed **Export to Calendar** to **Export ICS**, so its label says it
-  downloads a calendar file; the download itself is unchanged
+* Added an **Add to Google Calendar** button that opens a prefilled Google
+  Calendar event URL in a new tab
+* Google Calendar receives the reviewed `eventDate`, including any correction
+  made by the user, not the date the pipeline originally read
+* The event is created as an all-day event, and the flyer's filename is
+  temporarily used as its title
+* Renamed **Export to Calendar** to **Export ICS**; the `.ics` download is kept
+  as a separate, portable calendar option and is otherwise unchanged
+* Both calendar options stay disabled while `reviewStatus` is `pending` and
+  become available once the result is `accepted` or `edited`
 * Removed the obsolete Native Messaging ping test UI
 
 ---
-
 
 ## Phase 14: Date Reliability — October 7, 2026
 
@@ -275,53 +276,24 @@ establish a new flyer-benchmark accuracy score or verify the Chrome demo path.
 
 ## Current Status
 
-- The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
-- The user selects one flyer in the Chrome popup, which sends it to the native
-  host Chrome launches for it and shows the result as `pending`
-- No HTTP server needs to be started in a terminal first; Chrome launches the
-  registered native host
-- Host registration remains machine-specific. A missing manifest was resolved
-  on September 30 by running `register_host.bat`; host name, extension ID,
-  interpreter, and paths must still match the current installation
-- A command-line run still sends its most recent result to the extension too
-- The popup lets the user Accept the extracted date or Edit and Save a correction
-- The reviewed result persists in `chrome.storage.local`
-- Accepted and edited results can be added directly to Google Calendar or downloaded as `reviewed_events.ics` with **Export ICS**
-- Pending results cannot be sent to a calendar
-- Both calendar options use the reviewed `eventDate`, not the original OCR date
-- The standalone `csv_to_ics.py` remains as an earlier proof of concept; the extension now generates its own calendar file directly in JavaScript
-- Date and pipeline tests most recently reported 153 passing tests
-- OCR remains imperfect, so human review is still part of the workflow
-- Earlier benchmark results were 8/10 on the original set and 7/10 on a harder
-  set; no updated post-fix benchmark score is recorded here
-- UI polish and navigation/state stability are the next demo-facing priorities
-- A five-slide lightning-talk draft exists; it still needs to reflect the final
-  demo and be rehearsed for the strict five-minute limit
+- Flyer selection launches the Python extractor through Native Messaging
+- The popup supports Accept/Edit review and persists the reviewed result
+- Both Google Calendar and ICS export use the reviewed `eventDate`
+- Google Calendar currently creates an all-day event using the filename as title
+- Date/pipeline tests most recently reported **153 passing**
+- OCR is still imperfect, so human review remains part of the workflow
 
 ---
 
 ## Next Steps — Before the October 15 Lightning Talk
 
-1. **Checkpoint the working extension.** Commit the current working version
-   and verify choose flyer → extract → Accept/Edit → Add to Google Calendar.
-   Confirm Export ICS also uses the reviewed date.
-2. **Re-run the same benchmark.** Record expected versus selected dates and
-   inspect remaining failures. Separate OCR misses from candidate-selection
-   and year-inference errors; finish any blocking R4/R5 fixes.
-3. **Stabilize and polish the popup.** Test closing/reopening the popup and
-   navigating away during extraction. Fix workflow-breaking state loss, then
-   improve layout, spacing, labels, status feedback, and action hierarchy.
-   A small flyer preview is a possible improvement, not yet implemented.
-4. **Update slides and rehearse.** Use the existing five-slide draft, show the
-   human-review step and remaining limitations, and rehearse within five
-   minutes. Prepare screenshots or a short recording as a demo fallback.
-5. **Explore direct-image or screen capture only if time remains.** Assess a
-   small proof of concept for obtaining an on-screen flyer without manually
-   saving it. This remains exploratory and is not required for the talk.
+1. **Polish the popup UI**
+2. **Review the final benchmark and remaining failures**
+3. **Finish slides**
+4. **Rehearse the five-minute talk**
+5. **Prepare a short backup demo recording**
 
-Fix host registration, extension-ID configuration, or repository setup before
-these steps only when it blocks the working demo. Retiring the unused HTTP
-server and broader repository cleanup can wait until after the talk.
+Further feature work can wait until after the talk.
 
 ---
 
