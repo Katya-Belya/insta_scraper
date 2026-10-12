@@ -809,3 +809,51 @@ def test_vendor_deadline_and_event_date_are_both_candidates():
     ]
     selected = select_event_date(candidates, today=TWO_DIGIT_TODAY)
     assert normalize_date(selected, today=TWO_DIGIT_TODAY) == "2026-10-10"
+
+
+# ---------------------------------------------------------------------------
+# OCR-glued "at" + time after a month-name day
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Saturday, October 31at6 PM",  # actual OCR output
+        "October 31at6 PM",
+        "October 31at 6 PM",
+        "October 31 at6 PM",
+        "OCTOBER 31AT6PM",
+        "Oct 31at6 PM",
+        "Oct. 31at 6:30 pm",
+        "October 31at7:30",
+        "October 31stat6 PM",
+        "OCT 31at6 P.M.",
+    ],
+)
+def test_glued_at_and_time_after_day(text):
+    assert extract_dates(text) == [
+        ExtractedDate(month_name="October", day=31, text="October 31")
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "October 31abc",
+        "October 31at",
+        "October 31at6",          # no AM/PM or minutes: not a recognizable time
+        "October 31atx 6 PM",
+        "October 31ath 6 PM",
+        "October 31pm",
+        "October 31at 2026",
+        "Oct 31xyz",
+        "Oct 31am6 PM",
+    ],
+)
+def test_unrelated_letter_suffix_after_day_is_not_a_date(text):
+    assert extract_dates(text) == []
+
+
+def test_glued_at_does_not_read_time_as_a_year():
+    assert extract_date("October 31at 10 PM").year is None
