@@ -303,6 +303,10 @@ body:has(#result:not([hidden])) .select-flyer {
   font-weight: 600;
 }
 
+.is-invalid-date #event-date:empty::before {
+  content: "Invalid date";
+}
+
 #event-date-input {
   width: 100%;
   padding: 8px 10px;
@@ -341,6 +345,21 @@ body:has(#result:not([hidden])) .select-flyer {
 #status.is-warning {
   color: var(--warning);
   font-weight: 600;
+}
+
+/* Labels a warning about the date the pipeline read, once corrected. */
+#status-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#status-label:empty {
+  display: none;
 }
 
 #status.is-warning::before {

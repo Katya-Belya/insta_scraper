@@ -182,6 +182,9 @@ is `DISTANT_EXPLICIT_DAYS`. Both only warn - the date is never rejected.
 **Accept date** confirms the extracted date, and **Edit date** and **Save date**
 replace it. Accept date is unavailable when there is no valid date to confirm
 (no date found, or not a real calendar day); Edit date is the way forward then.
+Save date accepts only a real calendar date in `YYYY-MM-DD` form and otherwise
+keeps the edit open. After a correction, a pipeline warning is labelled
+"Original extraction warning", since it describes the date the pipeline read.
 **Add to Google Calendar** opens a prefilled all-day event and
 **Download .ics file** writes `reviewed_events.ics`, both from the saved
 reviewed `eventDate`. Both stay disabled until the result is `accepted` or
