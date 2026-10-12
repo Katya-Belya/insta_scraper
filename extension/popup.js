@@ -240,6 +240,34 @@ function isRealCalendarDate(value) {
   return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+// The popup shows and accepts dates as MM-DD-YYYY. Everything else - storage,
+// the pipeline's output, Google Calendar, the ICS file and its name - keeps
+// YYYY-MM-DD, so these two functions are the only place the formats meet.
+
+// "2027-04-02" -> "04-02-2027". A value that is not a real YYYY-MM-DD date
+// (say, a record from an older popup) is shown as it is.
+function toDisplayDate(isoDate) {
+  if (!isRealCalendarDate(isoDate)) {
+    return isoDate ?? "";
+  }
+
+  const [year, month, day] = isoDate.split("-");
+  return `${month}-${day}-${year}`;
+}
+
+// "04-02-2027" -> "2027-04-02", or null if the text is not a real calendar
+// date written as MM-DD-YYYY.
+function fromDisplayDate(text) {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(text);
+
+  if (!match) {
+    return null;
+  }
+
+  const isoDate = `${match[3]}-${match[1]}-${match[2]}`;
+  return isRealCalendarDate(isoDate) ? isoDate : null;
+}
+
 // Whether a result has a real date to confirm. A flyer with no readable date,
 // or one whose date is not a real calendar day, has none.
 function hasValidEventDate(result) {
@@ -304,14 +332,14 @@ function renderResult(result) {
     result.needsReview ? "Yes" : "No";
 
   // A flyer with no readable date has no event date to show yet.
-  document.getElementById("event-date").textContent = result.eventDate ?? "";
+  document.getElementById("event-date").textContent = toDisplayDate(result.eventDate);
 
   // The date the pipeline read is only worth showing once the review replaced
   // it with something else.
   const dateWasChanged = result.originalEventDate !== result.eventDate;
   document.getElementById("original-event-date-row").hidden = !dateWasChanged;
   document.getElementById("original-event-date").textContent =
-    result.originalEventDate ?? "";
+    toDisplayDate(result.originalEventDate);
 
   // What the pipeline made of the flyer, which the review never changes.
   // A review restored from storage alone has no pipeline status to show, so
@@ -587,7 +615,7 @@ document.getElementById("edit").addEventListener("click", () => {
   const input = document.getElementById("event-date-input");
 
   // Start from the date that is on screen so the user can correct it.
-  input.value = reviewedResult.eventDate ?? "";
+  input.value = toDisplayDate(reviewedResult.eventDate);
 
   setEditing(true);
   document.getElementById("message").textContent = "";
@@ -606,15 +634,18 @@ document.getElementById("save").addEventListener("click", () => {
 
   // Only a real calendar date can be saved - the same check Accept uses - so
   // a typo never reaches the calendar. The edit stays open to fix it.
-  if (!isRealCalendarDate(correctedDate)) {
+  const correctedIsoDate = fromDisplayDate(correctedDate);
+
+  if (correctedIsoDate === null) {
     document.getElementById("message").textContent =
-      "Enter a valid date in YYYY-MM-DD format.";
+      "Enter a valid date in MM-DD-YYYY format.";
     return;
   }
 
   // Only the reviewed date moves: originalEventDate still holds what the
   // pipeline read.
-  reviewedResult.eventDate = correctedDate;
+  // Stored as YYYY-MM-DD, like the date the pipeline read.
+  reviewedResult.eventDate = correctedIsoDate;
   reviewedResult.reviewStatus = REVIEW_EDITED;
 
   // Persist the corrected result so the new date is shown the next time the

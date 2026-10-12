@@ -31,7 +31,7 @@ test("a fresh flyer opens as an unreviewed result", () => {
     popup.elements["filename"].textContent,
     "cherry_blossom_market.jpeg"
   );
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(
     popup.elements["status"].textContent,
     "Date and year printed on the flyer."
@@ -78,13 +78,13 @@ test("saving an edited date keeps the date the pipeline read", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
   popup.elements["edit"].click();
-  assert.strictEqual(popup.elements["event-date-input"].value, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date-input"].value, "03-27-2027");
   assert.strictEqual(popup.elements["event-date-input"].hidden, false);
 
   // Accepting mid-edit would store the old date.
   assert.strictEqual(popup.elements["accept"].disabled, true);
 
-  popup.elements["event-date-input"].value = "  2027-03-28  ";
+  popup.elements["event-date-input"].value = "  03-28-2027  ";
   popup.elements["save"].click();
 
   assertRecord(popup.stored(), {
@@ -95,11 +95,11 @@ test("saving an edited date keeps the date the pipeline read", () => {
     reviewStatus: "edited",
   });
 
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-28");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-28-2027");
   assert.strictEqual(popup.elements["original-event-date-row"].hidden, false);
   assert.strictEqual(
     popup.elements["original-event-date"].textContent,
-    "2027-03-27"
+    "03-27-2027"
   );
   assert.strictEqual(popup.elements["message"].textContent, "Saved!");
   assert.strictEqual(
@@ -112,7 +112,7 @@ test("Accept is off once an edit has been saved", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
   popup.elements["edit"].click();
-  popup.elements["event-date-input"].value = "2027-03-28";
+  popup.elements["event-date-input"].value = "03-28-2027";
   popup.elements["save"].click();
 
   // The user already chose a date, so accepting would only relabel it as if
@@ -151,16 +151,16 @@ test("an empty date is refused and leaves the edit open", () => {
 test("reopening the popup restores a settled review", () => {
   const first = openPopup(PIPELINE_RESULT, {});
   first.elements["edit"].click();
-  first.elements["event-date-input"].value = "2027-03-28";
+  first.elements["event-date-input"].value = "03-28-2027";
   first.elements["save"].click();
 
   // Reopening reads the same chrome.storage.local the first popup wrote.
   const reopened = openPopup(PIPELINE_RESULT, first.store);
 
-  assert.strictEqual(reopened.elements["event-date"].textContent, "2027-03-28");
+  assert.strictEqual(reopened.elements["event-date"].textContent, "03-28-2027");
   assert.strictEqual(
     reopened.elements["original-event-date"].textContent,
-    "2027-03-27"
+    "03-27-2027"
   );
   assert.strictEqual(reopened.elements["review-status"].textContent, "edited");
   assert.strictEqual(
@@ -186,7 +186,7 @@ test("reopening an accepted review leaves Accept off", () => {
 test("a corrected date can still be corrected again", () => {
   const first = openPopup(PIPELINE_RESULT, {});
   first.elements["edit"].click();
-  first.elements["event-date-input"].value = "2027-03-28";
+  first.elements["event-date-input"].value = "03-28-2027";
   first.elements["save"].click();
 
   const reopened = openPopup(PIPELINE_RESULT, first.store);
@@ -194,9 +194,9 @@ test("a corrected date can still be corrected again", () => {
   // Editing is the way to change a settled review, and the second correction
   // still does not disturb the date the pipeline read.
   reopened.elements["edit"].click();
-  assert.strictEqual(reopened.elements["event-date-input"].value, "2027-03-28");
+  assert.strictEqual(reopened.elements["event-date-input"].value, "03-28-2027");
 
-  reopened.elements["event-date-input"].value = "2027-03-29";
+  reopened.elements["event-date-input"].value = "03-29-2027";
   reopened.elements["save"].click();
 
   assertRecord(reopened.stored(), {
@@ -221,7 +221,7 @@ test("a review stored for a different flyer is ignored", () => {
 
   const popup = openPopup(PIPELINE_RESULT, otherFlyer);
 
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
   assert.strictEqual(popup.elements["original-event-date-row"].hidden, true);
 
@@ -243,10 +243,10 @@ test("a record written by the older popup still reviews", () => {
 
   // The corrected date survives, and the date the pipeline read fills in the
   // originalEventDate the older record never had.
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-28");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-28-2027");
   assert.strictEqual(
     popup.elements["original-event-date"].textContent,
-    "2027-03-27"
+    "03-27-2027"
   );
 
   // The older record has no reviewStatus, so the flyer is reviewed again.
@@ -286,7 +286,7 @@ test("a flyer with no readable date can be given one", () => {
   popup.elements["edit"].click();
   assert.strictEqual(popup.elements["event-date-input"].value, "");
 
-  popup.elements["event-date-input"].value = "2027-09-01";
+  popup.elements["event-date-input"].value = "09-01-2027";
   popup.elements["save"].click();
 
   assertRecord(popup.stored(), {
@@ -312,7 +312,7 @@ test("clicks before the stored review arrives are ignored", () => {
   // Once the read answers, the popup fills in as usual.
   popup.answerStorage();
 
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
   assert.strictEqual(popup.elements["accept"].disabled, false);
 });
@@ -331,7 +331,7 @@ test("an edited result downloads an ICS file", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
   popup.elements["edit"].click();
-  popup.elements["event-date-input"].value = "2027-03-29";
+  popup.elements["event-date-input"].value = "03-29-2027";
   popup.elements["save"].click();
   popup.elements["export"].click();
 
@@ -392,7 +392,7 @@ test("a printed date already past is a warning, not an error", () => {
   );
   assert.strictEqual(popup.elements["status"].className, "is-warning");
   // The date is still a real date, so it is shown for review.
-  assert.strictEqual(popup.elements["event-date"].textContent, "2025-08-24");
+  assert.strictEqual(popup.elements["event-date"].textContent, "08-24-2025");
   assert.strictEqual(popup.elements["accept"].disabled, false);
 });
 
@@ -409,7 +409,7 @@ test("a printed date over a year away warns to check the year", () => {
   assert.strictEqual(popup.elements["status"].className, "is-warning");
   assert.strictEqual(popup.elements["needs-review"].textContent, "Yes");
   // A warning, not a rejection: the date is shown and can be accepted.
-  assert.strictEqual(popup.elements["event-date"].textContent, "3679-03-17");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-17-3679");
   assert.strictEqual(popup.elements["accept"].disabled, false);
 });
 

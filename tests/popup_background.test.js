@@ -356,7 +356,7 @@ test("both calendar actions are off while editing and use the saved date", async
   popup.elements["edit"].click();
   assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
 
-  popup.elements["event-date-input"].value = "2027-04-02";
+  popup.elements["event-date-input"].value = "04-02-2027";
   popup.elements["add-to-google-calendar"].click();
   popup.elements["export"].click();
   assert.strictEqual(browser.tabs.length, 0);
@@ -385,7 +385,7 @@ test("a pending result's edit saved directly enables the calendar", async () => 
   popup.elements["edit"].click();
   assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
 
-  popup.elements["event-date-input"].value = "2027-05-01";
+  popup.elements["event-date-input"].value = "05-01-2027";
   popup.elements["save"].click();
   await flush();
 
@@ -417,7 +417,7 @@ test("extraction finishes after the popup closes and reopens pending", async () 
   await flush();
 
   assert.strictEqual(reopened.elements["result"].hidden, false);
-  assert.strictEqual(reopened.elements["event-date"].textContent, "2026-03-27");
+  assert.strictEqual(reopened.elements["event-date"].textContent, "03-27-2026");
   assert.strictEqual(reopened.elements["review-status"].textContent, "pending");
   assert.strictEqual(reopened.elements["file-input"].disabled, false);
   assert.deepStrictEqual(calendarState(reopened), { google: true, ics: true });
@@ -446,7 +446,7 @@ test("a popup reopened during extraction shows progress, then the result", async
   host.release();
   await flush();
 
-  assert.strictEqual(reopened.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(reopened.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(
     reopened.elements["state-message"].textContent,
     "Found an event date. Review it below."
@@ -498,7 +498,7 @@ for (const [name, result] of [
 
     // Entering a date through Edit is what unlocks the calendar.
     popup.elements["edit"].click();
-    popup.elements["event-date-input"].value = "2027-06-12";
+    popup.elements["event-date-input"].value = "06-12-2027";
     popup.elements["save"].click();
     await flush();
 
@@ -540,7 +540,7 @@ test("a pending result with a valid date can still be accepted", async () => {
   assert.doesNotMatch(popup.elements["result"].className, /has-no-date/);
 });
 
-const INVALID_DATE_MESSAGE = "Enter a valid date in YYYY-MM-DD format.";
+const INVALID_DATE_MESSAGE = "Enter a valid date in MM-DD-YYYY format.";
 
 // Open a popup on an extracted result and start editing its date.
 async function editingPopup(result = OK_RESULT) {
@@ -554,7 +554,8 @@ async function editingPopup(result = OK_RESULT) {
 
 for (const [name, typed] of [
   ["malformed text", "March 3"],
-  ["an impossible date", "2027-02-30"],
+  ["an impossible date", "02-30-2027"],
+  ["a date in the stored YYYY-MM-DD form", "2027-04-02"],
 ]) {
   test(`Save refuses ${name} and keeps editing open`, async () => {
     const { browser, popup } = await editingPopup();
@@ -577,12 +578,12 @@ for (const [name, typed] of [
 test("a valid correction after a refused one is saved", async () => {
   const { browser, popup } = await editingPopup();
 
-  popup.elements["event-date-input"].value = "2027-13-01";
+  popup.elements["event-date-input"].value = "13-01-2027";
   popup.elements["save"].click();
   await flush();
   assert.strictEqual(popup.elements["message"].textContent, INVALID_DATE_MESSAGE);
 
-  popup.elements["event-date-input"].value = "2027-03-28";
+  popup.elements["event-date-input"].value = "03-28-2027";
   popup.elements["save"].click();
   await flush();
 
@@ -634,7 +635,7 @@ test("a warning shown after a correction is labelled as the original's", async (
   // Before the correction the warning is about the date on screen.
   assert.strictEqual(popup.elements["status-label"].textContent, "");
 
-  popup.elements["event-date-input"].value = "2027-03-27";
+  popup.elements["event-date-input"].value = "03-27-2027";
   popup.elements["save"].click();
   await flush();
 
@@ -678,7 +679,7 @@ for (const review of ["accepted", "edited"]) {
       popup.elements["accept"].click();
     } else {
       popup.elements["edit"].click();
-      popup.elements["event-date-input"].value = "2027-03-29";
+      popup.elements["event-date-input"].value = "03-29-2027";
       popup.elements["save"].click();
     }
     await flush();
@@ -734,7 +735,7 @@ test("the ICS file name uses the saved edited date; contents are unchanged", asy
   await flush();
   await popup.selectFlyer(OK_RESULT.filename);
   popup.elements["edit"].click();
-  popup.elements["event-date-input"].value = "2027-04-02";
+  popup.elements["event-date-input"].value = "04-02-2027";
   popup.elements["save"].click();
   await flush();
   popup.elements["export"].click();
@@ -745,6 +746,58 @@ test("the ICS file name uses the saved edited date; contents are unchanged", asy
   assert.match(ics, /SUMMARY:cherry_blossom_market\.jpeg/);
   assert.match(ics, /DTSTART;VALUE=DATE:20270402/);
   assert.match(ics, /DTEND;VALUE=DATE:20270403/);
+});
+
+test("04-02-2027 displays and exports as April 2, 2027; 02-30-2027 is refused", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(OK_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(OK_RESULT.filename);
+
+  // The pipeline's 2027-03-27 is shown, and offered for editing, as MM-DD-YYYY.
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
+  popup.elements["edit"].click();
+  assert.strictEqual(popup.elements["event-date-input"].value, "03-27-2027");
+  assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+
+  // An impossible date is refused; editing stays open with the calendar off.
+  popup.elements["event-date-input"].value = "02-30-2027";
+  popup.elements["save"].click();
+  await flush();
+  assert.strictEqual(
+    popup.elements["message"].textContent,
+    "Enter a valid date in MM-DD-YYYY format."
+  );
+  assert.strictEqual(popup.elements["event-date-input"].hidden, false);
+  assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+  assert.strictEqual(browser.store.flyerResult.eventDate, "2027-03-27");
+
+  popup.elements["event-date-input"].value = "04-02-2027";
+  popup.elements["save"].click();
+  await flush();
+
+  // Shown as MM-DD-YYYY, stored as YYYY-MM-DD.
+  assert.strictEqual(popup.elements["event-date"].textContent, "04-02-2027");
+  assert.strictEqual(popup.elements["original-event-date"].textContent, "03-27-2027");
+  assert.strictEqual(popup.elements["original-event-date-row"].hidden, false);
+  assert.strictEqual(browser.store.flyerResult.eventDate, "2027-04-02");
+  assert.strictEqual(browser.store.flyerResult.originalEventDate, "2027-03-27");
+
+  // Google Calendar and the ICS file get April 2, 2027.
+  popup.elements["add-to-google-calendar"].click();
+  assert.match(browser.tabs[0], /dates=20270402%2F20270403/);
+  popup.elements["export"].click();
+  assert.strictEqual(popup.downloads[0].filename, "cherry_blossom_market_2027-04-02.ics");
+  const ics = await popup.icsText();
+  assert.match(ics, /DTSTART;VALUE=DATE:20270402/);
+  assert.match(ics, /DTEND;VALUE=DATE:20270403/);
+
+  // Reopening shows the saved date in the same format, and Edit prefills it.
+  const reopened = browser.openPopup();
+  await flush();
+  assert.strictEqual(reopened.elements["event-date"].textContent, "04-02-2027");
+  reopened.elements["edit"].click();
+  assert.strictEqual(reopened.elements["event-date-input"].value, "04-02-2027");
 });
 
 const CONNECTION_ERROR =
@@ -787,7 +840,7 @@ test("a connection error leaves the previous review in place", async () => {
   await popup.selectFlyer("new.jpeg");
 
   assert.strictEqual(popup.elements["state-message"].textContent, CONNECTION_ERROR);
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(browser.store.flyerResult.filename, "kept.jpeg");
   assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
 });
