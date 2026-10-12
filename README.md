@@ -184,8 +184,10 @@ replace it. Accept date is unavailable when there is no valid date to confirm
 (no date found, or not a real calendar day); Edit date is the way forward then.
 The popup shows and edits dates as `MM-DD-YYYY`; storage, Google Calendar
 and the ICS file keep `YYYY-MM-DD`. Save date accepts only a real calendar
-date in `MM-DD-YYYY` form and otherwise keeps the edit open. After a correction, a pipeline warning is labelled
-"Original extraction warning", since it describes the date the pipeline read.
+date in `MM-DD-YYYY` form and otherwise keeps the edit open. Once a corrected date is saved, the date the pipeline
+read and its status explanation move into a collapsed **Original extraction**
+section (a warning there is labelled "Original extraction warning"); pending
+and accepted results keep their warnings in view.
 **Add to Google Calendar** opens a prefilled all-day event and
 **Download .ics file** writes `<flyer-name>_<YYYY-MM-DD>.ics` (for example
 `cherry_blossom_market_2027-03-27.ics`, or `flyer-event_<date>.ics` when the

@@ -353,6 +353,20 @@ function renderResult(result) {
 
   // Once the user has corrected the date, a warning describes what the
   // pipeline read, not the corrected date, so it is labelled as such.
+  // Once a valid correction is saved, what the pipeline read - its date and
+  // its status explanation - is history: it moves into a collapsed
+  // "Original extraction" section. Pending, accepted and uncorrected results
+  // keep it open and inline, so their warnings stay in view.
+  const corrected =
+    result.reviewStatus === REVIEW_EDITED &&
+    dateWasChanged &&
+    hasValidEventDate(result);
+  const originalExtraction = document.getElementById("original-extraction");
+  originalExtraction.open = !corrected;
+  originalExtraction.className = corrected
+    ? "original-extraction is-collapsed"
+    : "original-extraction";
+
   const correctedWarning =
     explanation.warning &&
     result.reviewStatus === REVIEW_EDITED &&

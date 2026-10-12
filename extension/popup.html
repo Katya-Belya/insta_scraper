@@ -47,18 +47,25 @@
              placeholder="MM-DD-YYYY" aria-label="Event date (MM-DD-YYYY)">
     </p>
 
-    <!-- Only shown once the reviewed date differs from the one OCR read -->
-    <p id="original-event-date-row" class="original-date" hidden>
-      Flyer read: <span id="original-event-date"></span>
-    </p>
+    <!-- What the pipeline read. Open and inline (no summary shown) until a
+         valid correction is saved; popup.js then collapses it under
+         "Original extraction" so the card is about the corrected date. -->
+    <details id="original-extraction" class="original-extraction" open>
+      <summary>Original extraction</summary>
 
-    <!-- Only shown for a result this popup has a pipeline status for.
-         Warning statuses (past date, distant year) get the is-warning class. -->
-    <p id="status-row">
-      <!-- "Original extraction warning" once the date has been corrected -->
-      <span id="status-label"></span>
-      <span id="status"></span>
-    </p>
+      <!-- Only shown once the reviewed date differs from the one OCR read -->
+      <p id="original-event-date-row" class="original-date" hidden>
+        Flyer read: <span id="original-event-date"></span>
+      </p>
+
+      <!-- Only shown for a result this popup has a pipeline status for.
+           Warning statuses (past date, distant year) get the is-warning class. -->
+      <p id="status-row">
+        <!-- "Original extraction warning" once the date has been corrected -->
+        <span id="status-label"></span>
+        <span id="status"></span>
+      </p>
+    </details>
 
     <!-- Buttons the user reviews a FlyerResult with -->
     <div class="review-actions">

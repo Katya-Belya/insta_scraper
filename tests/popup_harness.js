@@ -34,6 +34,7 @@ const ELEMENT_IDS = [
   "result",
   "event-date",
   "event-date-input",
+  "original-extraction",
   "original-event-date-row",
   "original-event-date",
   "status-row",
