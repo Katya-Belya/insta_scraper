@@ -51,21 +51,28 @@ The normalization step converts extracted dates into a consistent machine-readab
 
 ## V1 Workflow
 
-One flyer, one reviewed date, one calendar file, all from the Chrome popup:
+One flyer, one reviewed date, one calendar entry, all from the Chrome popup:
 
 ```text
-Select Flyer  ->  Native Messaging  ->  pipeline  ->  reviewed result
- (popup)          (src/native_host.py)  (src/*.py)    (Accept / Edit)
-                                                            |
-                                                            v
-                                                  Export to Calendar
-                                                   (reviewed_events.ics)
+Select Flyer  ->  background worker  ->  Native Messaging  ->  pipeline  ->  reviewed result
+ (popup)          (background.js)        (src/native_host.py)  (src/*.py)    (Accept date / Edit date)
+                                                                                     |
+                                                                                     v
+                                                                          Add to Google Calendar
+                                                                          or Download .ics file
 ```
 
-The extension cannot run Tesseract, so the popup hands the flyer to a Python
-process instead. Chrome launches that process itself, through Native
-Messaging, the moment a flyer is selected - so there is nothing for the user
-to start first.
+The extension cannot run Tesseract, so it hands the flyer to a Python process
+instead. Chrome launches that process itself, through Native Messaging, the
+moment a flyer is selected - so there is nothing for the user to start first.
+
+The popup only reads the file. It passes the image to the extension's
+background service worker (`extension/background.js`), which opens a native
+port with `chrome.runtime.connectNative("com.flyer_extractor.host")` and
+writes the job state and the finished result to `chrome.storage.local`.
+Closing the popup mid-extraction therefore loses nothing: the next popup
+picks up the result where the worker left it. The image itself is kept in
+memory only and never written to storage.
 
 `src/native_host.py` contains no extraction logic. It reads one message from
 stdin, writes the flyer to a temporary file, calls the same
@@ -79,7 +86,8 @@ A Native Messaging message is JSON, so the image travels base64-encoded:
 ->  {"type": "extract", "filename": "flyer.jpeg", "imageBase64": "..."}
 <-  {"ok": true, "result": {"filename": "flyer.jpeg",
                             "eventDate": "2027-03-27",
-                            "status": "ok", "needsReview": false}}
+                            "status": "inferred_year_distant",
+                            "needsReview": true}}
 ```
 
 Anything that goes wrong answers in one shape instead, which is how the popup
@@ -111,17 +119,26 @@ This replaces `python -m src.server`, which the popup no longer uses.
 
 4. Reload the extension, open the popup, and click **Select Flyer**.
 
-Step 3 writes a host manifest into Chrome's `NativeMessagingHosts` directory
-(or, on Windows, the matching registry key). It records the two things that
-differ on every machine: the absolute path of
-`native_host/flyer_extractor_host.py` and the id from step 2. Chrome assigns a
+Step 3 builds a host manifest from the template
+`native_host/com.flyer_extractor.host.json` - which it only reads, never
+changes - and registers it under the name `com.flyer_extractor.host`, the one
+`extension/background.js` connects to. On Linux and macOS the manifest goes
+into Chrome's `NativeMessagingHosts` directory; on Windows it is written to
+`native_host/installed/` and the matching `HKCU` registry key points at it.
+The manifest records the two things that differ on every machine: the
+absolute path of the host launcher and the id from step 2. Chrome assigns a
 new id if the extension is removed and loaded again, so rerun it when that
 happens.
 
 The interpreter matters. Chrome inherits none of the shell's environment, so a
 host registered from outside the project's virtual environment finds no Pillow
-and no pytesseract. `install_host.py` records whichever interpreter runs it,
-which is why it should be run from the activated environment. A host that
+and no pytesseract. A host manifest cannot pass arguments, so `install_host.py`
+also writes a small launcher into `native_host/installed/`
+(`flyer_extractor_host.sh`, or `flyer_extractor_host.bat` on Windows, where
+Chrome cannot run a `.py` file directly) that runs
+`native_host/flyer_extractor_host.py` with whichever interpreter ran the
+installer. That is why it should be run from the activated environment.
+`native_host/installed/` is generated per machine and gitignored. A host that
 cannot import the pipeline says so rather than dying, and the popup shows the
 connection-error state.
 
@@ -159,9 +176,42 @@ The popup keeps one canonical reviewed result per flyer:
 | `needsReview`       | The pipeline's own "a human should look at this"  |
 | `reviewStatus`      | `pending`, `accepted`, or `edited`                |
 
-**Accept** confirms the extracted date, **Edit** and **Save** replace it, and
-**Export to Calendar** writes `reviewed_events.ics` from the reviewed
-`eventDate`. Only `accepted` and `edited` results can be exported.
+The pipeline's `status` says how much to trust the date, and the popup shows
+it as a sentence rather than the raw code:
+
+| Status                    | Meaning                                                 | Needs review  |
+| ------------------------- | ------------------------------------------------------- | ------------- |
+| `ok`                      | Year printed on the flyer, today to 366 days ahead      | No            |
+| `explicit_future_distant` | Year printed on the flyer, over 366 days ahead          | Yes (warning) |
+| `explicit_past_date`      | Year printed on the flyer, date already passed          | Yes (warning) |
+| `inferred_year`           | No year printed; next occurrence, within 90 days        | Yes           |
+| `inferred_year_distant`   | No year printed; next occurrence over 90 days away      | Yes (warning) |
+| `invalid_date`            | A date was found but does not exist (e.g. Feb 29, 2027) | Yes           |
+| `no_date_found`           | No recognizable date                                    | Yes           |
+
+A printed four-digit year (0001-9999) is never changed, even when it is in the
+past. Two-digit years (`2/17/26`) and other malformed year suffixes reject the
+whole date rather than being guessed or dropped. The 90-day warning threshold is
+`DISTANT_INFERRED_DAYS` in `src/pipeline.py`; the 366-day one for printed dates
+is `DISTANT_EXPLICIT_DAYS`. Both only warn - the date is never rejected.
+
+**Accept date** confirms the extracted date, and **Edit date** and **Save date**
+replace it. Accept date is unavailable when there is no valid date to confirm
+(no date found, or not a real calendar day); Edit date is the way forward then.
+The popup shows and edits dates as `MM-DD-YYYY`; storage, Google Calendar
+and the ICS file keep `YYYY-MM-DD`. Save date accepts only a real calendar
+date written month-day-year with hyphens (`4-2-2027` or `04-02-2027`; the
+year must have four digits) and otherwise keeps the edit open. Once a corrected date is saved, the date the pipeline
+read and its status explanation move into a collapsed **Original extraction**
+section (a warning there is labelled "Original extraction warning"); pending
+and accepted results keep their warnings in view.
+**Add to Google Calendar** opens a prefilled all-day event and
+**Download .ics file** writes `<flyer-name>_<YYYY-MM-DD>.ics` (for example
+`cherry_blossom_market_2027-03-27.ics`, or `flyer-event_<date>.ics` when the
+flyer name has nothing usable), both from the saved
+reviewed `eventDate`. Both stay disabled until the result is `accepted` or
+`edited`, and while a date is being edited. **Clear results** removes the
+stored result.
 
 The command-line runner still works as it did: `python -m src.pipeline <path>`
 writes `results.csv` and `extension/latest_result.js`, and a popup opened after
@@ -174,10 +224,18 @@ pytest
 node tests/popup_flyer_input.test.js
 node tests/popup_review.test.js
 node tests/ics.test.js
+node tests/popup_background.test.js
 ```
 
 The extension tests stub the native host, and `tests/test_native_host.py`
 stubs `src.pipeline`, so neither needs a registered host or an OCR install.
+`tests/popup_background.test.js` runs `popup.js` and `background.js` together
+over mocked storage and a mocked native port.
+
+Known issue: `tests/popup_flyer_input.test.js` and `tests/popup_review.test.js`
+currently fail. `tests/popup_harness.js` predates the background extraction
+worker and does not stub `chrome.storage.onChanged` or
+`chrome.runtime.sendMessage`, so the popup cannot load in it.
 
 ## Key Findings
 
@@ -252,8 +310,10 @@ insta_scraper/
 │   ├── results_benchmark_v2.1.csv
 │   └── ...
 ├── extension/
+│   ├── background.js
 │   ├── ics.js
 │   ├── manifest.json
+│   ├── popup.css
 │   ├── popup.html
 │   └── popup.js
 ├── native_host/
@@ -272,10 +332,12 @@ insta_scraper/
 │   └── server.py
 ├── tests/
 │   ├── ics.test.js
+│   ├── popup_background.test.js
 │   ├── popup_flyer_input.test.js
 │   ├── popup_harness.js
 │   ├── popup_review.test.js
 │   ├── test_dates.py
+│   ├── test_install_host.py
 │   ├── test_native_host.py
 │   ├── test_ocr.py
 │   ├── test_pipeline.py
@@ -298,12 +360,12 @@ insta_scraper/
 - `evaluation/` collects ground-truth spreadsheets, benchmark results, and run
   logs from earlier pipeline versions.
 - `extension/` is a Chrome extension: the user selects a flyer in its popup,
-  the popup sends it to the native host, and the extracted date is reviewed
-  and exported there.
+  the background worker (`background.js`) sends it to the native host, and the
+  extracted date is reviewed and exported in the popup.
 - `native_host/` is what Chrome launches: `flyer_extractor_host.py` is the
-  script named in the host manifest, `com.flyer_extractor.host.json` is the
-  template that manifest is built from, and `install_host.py` registers it for
-  this machine.
+  host script, `com.flyer_extractor.host.json` is the template the host
+  manifest is built from, and `install_host.py` writes a launcher and the
+  manifest for this machine and registers it.
 - `notebooks/` contains exploratory OCR experiments.
 - `src/` contains the pipeline itself: `ocr.py` reads a flyer image, `dates.py`
   finds and normalizes dates in that text, `pipeline.py` runs the stages in
@@ -315,7 +377,8 @@ insta_scraper/
   tests, which run with `node`. `popup_flyer_input.test.js` covers selecting a
   flyer and extracting it, `popup_review.test.js` covers reviewing the result,
   `ics.test.js` covers calendar export, `popup_harness.js` is the stub popup
-  the first two run against, and `test_native_host.py` covers the Native
+  the first two run against, `popup_background.test.js` runs the popup and the
+  background worker together, and `test_native_host.py` covers the Native
   Messaging wire format and its dispatch into the pipeline.
 
 `data/raw/` and `data/processed/` are gitignored. Ingested flyers are

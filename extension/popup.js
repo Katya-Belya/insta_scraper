@@ -1,5 +1,6 @@
 // Key used to remember the reviewed result in chrome.storage.local.
 const STORAGE_KEY = "flyerResult";
+const JOB_KEY = "flyerExtraction";
 
 // The three states a review can be in.
 //
@@ -9,16 +10,6 @@ const STORAGE_KEY = "flyerResult";
 const REVIEW_PENDING = "pending";
 const REVIEW_ACCEPTED = "accepted";
 const REVIEW_EDITED = "edited";
-
-// The Native Messaging host that runs the Python extraction pipeline.
-//
-// This name is the one in native_host/com.flyer_extractor.host.json, which
-// native_host/install_host.py registers with Chrome. Chrome launches that host
-// itself when a message is sent, so nothing has to be started by hand first.
-//
-// If the host manifest on this machine uses a different name, change it here
-// to match - the two have to agree exactly or Chrome finds no host to launch.
-const NATIVE_HOST_NAME = "com.flyer_extractor.host";
 
 // File types the pipeline can read. Kept in step with IMAGE_EXTENSIONS in
 // src/pipeline.py, which is what the extractor itself checks against.
@@ -46,6 +37,10 @@ const STATES = {
     text: "No date was readable on this flyer. Use Edit to enter it.",
     tone: "is-error",
   },
+  invalidDate: {
+    text: "The date on this flyer is not a real calendar date. Use Edit to correct it.",
+    tone: "is-error",
+  },
   // The states a flyer can fail in name the file they are about. Nothing was
   // extracted from it, so it is not the flyer shown below, and saying which
   // file failed is the only way to tell the two apart.
@@ -64,6 +59,56 @@ const STATES = {
   },
 };
 
+// A readable explanation for every status the pipeline can report (see the
+// STATUS_* values in src/pipeline.py), shown in place of the raw code.
+//
+// `warning` marks the statuses where the date shown may well be wrong - an
+// inferred year that is months away, a printed date more than a year away, or
+// a printed date already past - so the
+// explanation is drawn as a warning rather than as plain text.
+const STATUS_EXPLANATIONS = {
+  ok: {
+    text: "Date and year printed on the flyer.",
+    warning: false,
+  },
+  inferred_year: {
+    text:
+      "No year on the flyer. The year shown is the next time this date " +
+      "comes around - confirm it.",
+    warning: false,
+  },
+  inferred_year_distant: {
+    text:
+      "Check the year: the flyer has no year, and the next time this date " +
+      "comes around is months away. The event may already have happened.",
+    warning: true,
+  },
+  explicit_future_distant: {
+    text: "Printed date is more than a year away; check the year.",
+    warning: true,
+  },
+  explicit_past_date: {
+    text:
+      "The date printed on the flyer has already passed. Check that this is " +
+      "the event you want before accepting.",
+    warning: true,
+  },
+  invalid_date: {
+    text: "The date on the flyer is not a real calendar date.",
+    warning: true,
+  },
+  no_date_found: {
+    text: "No date was found on the flyer.",
+    warning: true,
+  },
+};
+
+// The explanation for one pipeline status. A status this popup does not know
+// - from a newer pipeline, say - is shown as it is rather than hidden.
+function explainStatus(status) {
+  return STATUS_EXPLANATIONS[status] ?? { text: status, warning: false };
+}
+
 // The result of the most recent command-line pipeline run, if one has written
 // extension/latest_result.js.
 //
@@ -72,8 +117,8 @@ const STATES = {
 // on its result, so the command-line workflow keeps working.
 const latestPipelineResult = window.flyerResult ?? null;
 
-// What the pipeline made of the flyer currently on screen ("ok",
-// "no_date_found", "invalid_date").
+// What the pipeline made of the flyer currently on screen: one of the
+// statuses in STATUS_EXPLANATIONS above.
 //
 // Deliberately not part of the reviewed result below: it belongs to the
 // pipeline, a review never changes it, and the stored record holds only what
@@ -101,13 +146,8 @@ let pipelineStatus = latestPipelineResult ? latestPipelineResult.status : null;
 // storage held no earlier review.
 let reviewedResult = null;
 
-// How many flyers have been selected so far.
-//
-// Reading a flyer takes a moment, and nothing stops the user from selecting
-// another one while the first is still being read. Each extraction remembers
-// its own number and gives up if a later one has started, so an earlier
-// answer arriving late cannot replace a newer flyer's result.
 let selectionCount = 0;
+let popupReadingFile = false;
 
 // Build a fresh, unreviewed result from the pipeline output.
 function createReviewedResult(pipelineResult) {
@@ -186,6 +226,57 @@ function showFlyerName(filename) {
   document.getElementById("filename").textContent = filename ?? "";
 }
 
+// Whether a value is a real calendar date written as YYYY-MM-DD. Used both
+// for the date a result already has and for a date the user tries to save.
+function isRealCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+
+  if (!match) {
+    return false;
+  }
+
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+// The popup shows and accepts dates as MM-DD-YYYY. Everything else - storage,
+// the pipeline's output, Google Calendar, the ICS file and its name - keeps
+// YYYY-MM-DD, so these two functions are the only place the formats meet.
+
+// "2027-04-02" -> "04-02-2027". A value that is not a real YYYY-MM-DD date
+// (say, a record from an older popup) is shown as it is.
+function toDisplayDate(isoDate) {
+  if (!isRealCalendarDate(isoDate)) {
+    return isoDate ?? "";
+  }
+
+  const [year, month, day] = isoDate.split("-");
+  return `${month}-${day}-${year}`;
+}
+
+// "04-02-2027" or "4-2-2027" -> "2027-04-02", or null if the text is not a
+// real calendar date written as M-D-YYYY: one- or two-digit month and day, a
+// four-digit year, hyphens between. Display is always MM-DD-YYYY.
+function fromDisplayDate(text) {
+  const match = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(text);
+
+  if (!match) {
+    return null;
+  }
+
+  const month = match[1].padStart(2, "0");
+  const day = match[2].padStart(2, "0");
+  const isoDate = `${match[3]}-${month}-${day}`;
+  return isRealCalendarDate(isoDate) ? isoDate : null;
+}
+
+// Whether a result has a real date to confirm. A flyer with no readable date,
+// or one whose date is not a real calendar day, has none.
+function hasValidEventDate(result) {
+  return isRealCalendarDate(result.eventDate);
+}
+
 // Switch the event date between the read-only span and the edit field.
 function setEditing(editing) {
   document.getElementById("event-date").hidden = editing;
@@ -199,9 +290,23 @@ function setEditing(editing) {
   // old date, so Accept waits until the edit is saved. Once the review has
   // settled - "accepted", or "edited" with a date the user chose - there is
   // nothing left to accept, and accepting anyway would relabel a corrected
-  // date as if it were the one the pipeline read.
+  // date as if it were the one the pipeline read. With no valid date there is
+  // nothing to confirm either: Edit is the way forward.
   document.getElementById("accept").disabled =
-    editing || reviewedResult.reviewStatus !== REVIEW_PENDING;
+    editing ||
+    reviewedResult.reviewStatus !== REVIEW_PENDING ||
+    !hasValidEventDate(reviewedResult);
+
+  // Calendar output is available only after the user reviews the result, and
+  // not while a date is being edited: the edit is unsaved until Save, so the
+  // calendar would get the old date. A result without a valid date has
+  // nothing to put on a calendar either.
+  const calendarLocked =
+    editing ||
+    reviewedResult.reviewStatus === REVIEW_PENDING ||
+    !hasValidEventDate(reviewedResult);
+  document.getElementById("export").disabled = calendarLocked;
+  document.getElementById("add-to-google-calendar").disabled = calendarLocked;
 }
 
 // Display the reviewed result in the popup.
@@ -209,26 +314,69 @@ function renderResult(result) {
   showFlyerName(result.filename);
 
   // The review section only means something once there is a result.
-  document.getElementById("result").hidden = false;
+  const resultElement = document.getElementById("result");
+  resultElement.hidden = false;
+
+  // popup.css styles the review from these: the status badge, which buttons
+  // lead, the needs-review flag, and the placeholder for a missing date
+  // ("No date found") or one that is not a real day ("Invalid date").
+  const validDate = hasValidEventDate(result);
+  const invalidDate =
+    !validDate && (result.eventDate != null || pipelineStatus === "invalid_date");
+  resultElement.className = [
+    "result",
+    `review-${result.reviewStatus}`,
+    result.needsReview ? "is-uncertain" : "",
+    validDate ? "" : "has-no-date",
+    invalidDate ? "is-invalid-date" : "",
+  ].filter(Boolean).join(" ");
 
   document.getElementById("needs-review").textContent =
     result.needsReview ? "Yes" : "No";
 
   // A flyer with no readable date has no event date to show yet.
-  document.getElementById("event-date").textContent = result.eventDate ?? "";
+  document.getElementById("event-date").textContent = toDisplayDate(result.eventDate);
 
   // The date the pipeline read is only worth showing once the review replaced
   // it with something else.
   const dateWasChanged = result.originalEventDate !== result.eventDate;
   document.getElementById("original-event-date-row").hidden = !dateWasChanged;
   document.getElementById("original-event-date").textContent =
-    result.originalEventDate ?? "";
+    toDisplayDate(result.originalEventDate);
 
   // What the pipeline made of the flyer, which the review never changes.
   // A review restored from storage alone has no pipeline status to show, so
   // the row is hidden rather than left blank.
   document.getElementById("status-row").hidden = pipelineStatus === null;
-  document.getElementById("status").textContent = pipelineStatus ?? "";
+  const explanation =
+    pipelineStatus === null ? { text: "", warning: false } : explainStatus(pipelineStatus);
+  const statusElement = document.getElementById("status");
+  statusElement.textContent = explanation.text;
+  statusElement.className = explanation.warning ? "is-warning" : "";
+
+  // Once the user has corrected the date, a warning describes what the
+  // pipeline read, not the corrected date, so it is labelled as such.
+  // Once a valid correction is saved, what the pipeline read - its date and
+  // its status explanation - is history: it moves into a collapsed
+  // "Original extraction" section. Pending, accepted and uncorrected results
+  // keep it open and inline, so their warnings stay in view.
+  const corrected =
+    result.reviewStatus === REVIEW_EDITED &&
+    dateWasChanged &&
+    hasValidEventDate(result);
+  const originalExtraction = document.getElementById("original-extraction");
+  originalExtraction.open = !corrected;
+  originalExtraction.className = corrected
+    ? "original-extraction is-collapsed"
+    : "original-extraction";
+
+  const correctedWarning =
+    explanation.warning &&
+    result.reviewStatus === REVIEW_EDITED &&
+    dateWasChanged;
+  document.getElementById("status-label").textContent = correctedWarning
+    ? "Original extraction warning"
+    : "";
 
   document.getElementById("review-status").textContent = result.reviewStatus;
 
@@ -247,7 +395,22 @@ function renderResult(result) {
 function renderIdle() {
   showFlyerName(null);
   document.getElementById("result").hidden = true;
+
+  // Nothing is reviewed, so nothing can go to a calendar. Without this the
+  // buttons keep whatever state the last (now cleared) result left them in.
+  document.getElementById("export").disabled = true;
+  document.getElementById("add-to-google-calendar").disabled = true;
+
   setState("idle");
+}
+
+// Which of the STATES describes the result on screen.
+function resultStateName() {
+  if (reviewedResult.eventDate) {
+    return "success";
+  }
+
+  return pipelineStatus === "invalid_date" ? "invalidDate" : "noDateFound";
 }
 
 // Write the canonical reviewed result to chrome.storage.local and redraw the
@@ -262,27 +425,43 @@ function saveResult(onSaved) {
   });
 }
 
-// chrome.storage.local is asynchronous, so the popup is filled in once the
-// stored value comes back.
-chrome.storage.local.get(STORAGE_KEY, (stored) => {
-  const storedResult = stored[STORAGE_KEY];
-
-  if (latestPipelineResult) {
-    // A command-line run left a result here, so the popup opens on it.
-    reviewedResult = restoreReviewedResult(latestPipelineResult, storedResult);
-  } else if (storedResult && storedResult.filename) {
-    // Nothing new was extracted, so the last review is what to show.
-    reviewedResult = restoreStoredResult(storedResult);
+// Restore both extraction progress and the completed review on every open.
+async function refreshFromStorage() {
+  const stored = await chrome.storage.local.get([STORAGE_KEY, JOB_KEY]);
+  if (popupReadingFile) return;
+  const job = stored[JOB_KEY];
+  const saved = stored[STORAGE_KEY];
+  pipelineStatus = job?.pipelineStatus ?? null;
+  reviewedResult = saved?.filename ? restoreStoredResult(saved) : null;
+  if (!job && latestPipelineResult) {
+    pipelineStatus = latestPipelineResult.status;
+    reviewedResult = restoreReviewedResult(latestPipelineResult, saved);
   }
-
-  if (reviewedResult === null) {
-    renderIdle();
+  const processing = job?.state === "processing";
+  document.getElementById("file-input").disabled = processing;
+  document.getElementById("clear-results").disabled =
+    processing || (!reviewedResult && (!job || job.state === "cleared"));
+  if (processing) {
+    document.getElementById("result").hidden = true;
+    showFlyerName(job.filename);
+    setState("processing");
     return;
   }
-
-  renderResult(reviewedResult);
-  setState(reviewedResult.eventDate ? "success" : "noDateFound");
+  if (reviewedResult) {
+    renderResult(reviewedResult);
+    setState(resultStateName());
+  } else {
+    renderIdle();
+  }
+  if (job?.state === "error") setState(job.errorState, job.filename);
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  // Review saves already redraw the popup. Only job changes require restoration.
+  if (area === "local" && changes[JOB_KEY]) {
+    refreshFromStorage().catch(console.error);
+  }
 });
+refreshFromStorage().catch(console.error);
 
 // The reviewed result is built once chrome.storage.local answers, so a click
 // that lands before then has nothing to review yet.
@@ -331,122 +510,89 @@ function readFileAsBase64(file) {
   });
 }
 
-// Send one message to the native host and wait for its single answer.
+// Name the downloaded calendar file after the flyer and its reviewed date:
+// "<flyer-name>_<YYYY-MM-DD>.ics", e.g. "cherry_blossom_market_2027-03-27.ics".
 //
-// sendNativeMessage starts the host, delivers the message, hands back the
-// reply and lets Chrome shut the host down again - which is exactly the shape
-// of this workflow: one flyer at a time, with nothing left running in between.
-//
-// A host Chrome cannot launch - not registered, wrong path, exited before
-// answering - is reported through chrome.runtime.lastError rather than by
-// throwing, so it is turned into a rejection here and handled like any other
-// failure to reach the extractor.
-function sendToNativeHost(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, (response) => {
-      const failure = chrome.runtime.lastError;
+// The image extension is dropped, characters that are not safe in a filename
+// on Windows, macOS or Linux become "_", and a flyer with no usable name
+// falls back to "flyer-event".
+function icsFilename(result) {
+  const imageExtension = new RegExp(
+    `(${IMAGE_EXTENSIONS.map((ext) => ext.replace(".", "\\.")).join("|")})$`,
+    "i"
+  );
 
-      if (failure) {
-        reject(new Error(failure.message));
-        return;
-      }
+  const baseName = String(result.filename ?? "")
+    .replace(imageExtension, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f\s]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[._]+|[._]+$/g, "")
+    .slice(0, 100);
 
-      // A host that exits without writing anything leaves no lastError on
-      // some Chrome versions, only an undefined response.
-      if (!response) {
-        reject(new Error("The native host returned no response."));
-        return;
-      }
-
-      resolve(response);
-    });
-  });
+  return `${baseName || "flyer-event"}_${result.eventDate}.ics`;
 }
 
-// Send one flyer to the local extractor and review whatever comes back.
-//
-// Nothing that fails here disturbs the reviewed result already on screen: it
-// is replaced only once the extractor has actually returned a result for the
-// new flyer.
+// Convert YYYY-MM-DD to the format Google Calendar expects.
+function formatGoogleCalendarDate(dateString) {
+  return dateString.replaceAll("-", "");
+}
+
+// Return the day after an event date for an all-day Google Calendar event.
+function getNextDate(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + 1);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+// Build a prefilled Google Calendar event URL from a reviewed FlyerResult.
+function buildGoogleCalendarUrl(event) {
+  const startDate = formatGoogleCalendarDate(event.eventDate);
+  const endDate = formatGoogleCalendarDate(getNextDate(event.eventDate));
+
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: event.filename || "Instagram event",
+    dates: `${startDate}/${endDate}`,
+  });
+
+  return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
+}
+
+// Read the file here, then hand extraction to the background worker.
 async function extractFlyer(file) {
-  // This selection supersedes any extraction still in flight.
-  const selection = (selectionCount += 1);
-  const isCurrentSelection = () => selection === selectionCount;
-
-  // Put the popup back on the flyer the reviewed result is about. Every early
-  // return below leaves that result untouched, so the name has to match it
-  // rather than the file that failed - which the failure message names.
-  const restoreFlyerName = () =>
-    showFlyerName(reviewedResult ? reviewedResult.filename : null);
-
+  const selection = ++selectionCount;
   if (!isSupportedImage(file)) {
-    restoreFlyerName();
     setState("invalidFile", file.name);
     return;
   }
-
-  // The flyer is on its way to becoming the result, so it is what the popup
-  // is about while it is being read.
+  popupReadingFile = true;
+  document.getElementById("file-input").disabled = true;
+  document.getElementById("clear-results").disabled = true;
+  document.getElementById("result").hidden = true;
   showFlyerName(file.name);
   setState("processing");
-
-  let response;
-
   try {
-    response = await sendToNativeHost({
-      type: "extract",
-      filename: file.name,
-      imageBase64: await readFileAsBase64(file),
+    const imageBase64 = await readFileAsBase64(file);
+    if (selection !== selectionCount) return;
+    const reply = await chrome.runtime.sendMessage({
+      type: "startExtraction", filename: file.name, imageBase64,
     });
+    if (!reply?.ok) throw new Error(reply?.error || "Cannot start extraction.");
+    popupReadingFile = false;
+    await refreshFromStorage();
   } catch (error) {
-    if (!isCurrentSelection()) {
-      return;
-    }
-
-    // Either Chrome could not launch the host or the file could not be read
-    // here. Both mean no result came back at all, which is the state the user
-    // fixes by reinstalling the host.
-    restoreFlyerName();
+    popupReadingFile = false;
+    await refreshFromStorage();
     setState("connectionError");
-    return;
+    console.error(error);
   }
-
-  if (!isCurrentSelection()) {
-    return;
-  }
-
-  if (!response.ok) {
-    restoreFlyerName();
-
-    // The host refuses a file the pipeline cannot read for the same reason
-    // the popup does, so it produces the same state.
-    if (response.error === "unsupported_file_type") {
-      setState("invalidFile", file.name);
-      return;
-    }
-
-    // A host that launched but has no pipeline behind it - registered against
-    // an interpreter without this project's requirements - is not a problem
-    // with the flyer, and reinstalling the host is what fixes it.
-    if (response.error === "pipeline_unavailable") {
-      setState("connectionError");
-      return;
-    }
-
-    setState("extractionError", file.name);
-    return;
-  }
-
-  const pipelineResult = response.result;
-
-  // A new extraction replaces the reviewed result: this is a different flyer,
-  // and nobody has reviewed it yet.
-  pipelineStatus = pipelineResult.status;
-  reviewedResult = createReviewedResult(pipelineResult);
-
-  saveResult(() => {
-    setState(reviewedResult.eventDate ? "success" : "noDateFound");
-  });
 }
 
 // Selecting a file is what starts an extraction.
@@ -458,6 +604,8 @@ document.getElementById("file-input").addEventListener("change", (event) => {
     return;
   }
 
+  // Reset the file input so selecting the same flyer again triggers change.
+  input.value = "";
   extractFlyer(file);
 });
 
@@ -484,7 +632,7 @@ document.getElementById("edit").addEventListener("click", () => {
   const input = document.getElementById("event-date-input");
 
   // Start from the date that is on screen so the user can correct it.
-  input.value = reviewedResult.eventDate ?? "";
+  input.value = toDisplayDate(reviewedResult.eventDate);
 
   setEditing(true);
   document.getElementById("message").textContent = "";
@@ -501,9 +649,20 @@ document.getElementById("save").addEventListener("click", () => {
     return;
   }
 
+  // Only a real calendar date can be saved - the same check Accept uses - so
+  // a typo never reaches the calendar. The edit stays open to fix it.
+  const correctedIsoDate = fromDisplayDate(correctedDate);
+
+  if (correctedIsoDate === null) {
+    document.getElementById("message").textContent =
+      "Enter a valid date in MM-DD-YYYY format.";
+    return;
+  }
+
   // Only the reviewed date moves: originalEventDate still holds what the
   // pipeline read.
-  reviewedResult.eventDate = correctedDate;
+  // Stored as YYYY-MM-DD, like the date the pipeline read.
+  reviewedResult.eventDate = correctedIsoDate;
   reviewedResult.reviewStatus = REVIEW_EDITED;
 
   // Persist the corrected result so the new date is shown the next time the
@@ -512,6 +671,7 @@ document.getElementById("save").addEventListener("click", () => {
     document.getElementById("message").textContent = "Saved!";
   });
 });
+// The Export button downloads the reviewed result as an ICS calendar file.
 document.getElementById("export").addEventListener("click", () => {
   if (!reviewIsReady()) {
     document.getElementById("message").textContent =
@@ -536,11 +696,53 @@ document.getElementById("export").addEventListener("click", () => {
   const link = document.createElement("a");
 
   link.href = downloadUrl;
-  link.download = "reviewed_events.ics";
+  link.download = icsFilename(reviewedResult);
   link.click();
 
   URL.revokeObjectURL(downloadUrl);
 
   document.getElementById("message").textContent =
     "Calendar file downloaded!";
+});
+
+// The Google Calendar button opens the reviewed result as a prefilled event.
+document
+  .getElementById("add-to-google-calendar")
+  .addEventListener("click", () => {
+    if (!reviewIsReady()) {
+      document.getElementById("message").textContent =
+        "No reviewed result is ready.";
+      return;
+    }
+
+    if (reviewedResult.reviewStatus === REVIEW_PENDING) {
+      document.getElementById("message").textContent =
+        "Accept or edit the result before adding it to Google Calendar.";
+      return;
+    }
+
+    if (!reviewedResult.eventDate) {
+      document.getElementById("message").textContent =
+        "The reviewed result has no valid event date.";
+      return;
+    }
+
+    chrome.tabs.create({
+      url: buildGoogleCalendarUrl(reviewedResult),
+    });
+  });
+// Clearing is owned by the worker so it cannot race a running extraction.
+document.getElementById("clear-results").addEventListener("click", async () => {
+  if (popupReadingFile) return;
+  document.getElementById("clear-results").disabled = true;
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "clearResults" });
+    if (!reply?.ok) throw new Error(reply?.error || "Cannot clear results.");
+    document.getElementById("file-input").value = "";
+    await refreshFromStorage();
+  } catch (error) {
+    await refreshFromStorage();
+    document.getElementById("state-message").textContent = error.message;
+    document.getElementById("state-message").className = "is-error";
+  }
 });
