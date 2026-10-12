@@ -255,16 +255,19 @@ function toDisplayDate(isoDate) {
   return `${month}-${day}-${year}`;
 }
 
-// "04-02-2027" -> "2027-04-02", or null if the text is not a real calendar
-// date written as MM-DD-YYYY.
+// "04-02-2027" or "4-2-2027" -> "2027-04-02", or null if the text is not a
+// real calendar date written as M-D-YYYY: one- or two-digit month and day, a
+// four-digit year, hyphens between. Display is always MM-DD-YYYY.
 function fromDisplayDate(text) {
-  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(text);
+  const match = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(text);
 
   if (!match) {
     return null;
   }
 
-  const isoDate = `${match[3]}-${match[1]}-${match[2]}`;
+  const month = match[1].padStart(2, "0");
+  const day = match[2].padStart(2, "0");
+  const isoDate = `${match[3]}-${month}-${day}`;
   return isRealCalendarDate(isoDate) ? isoDate : null;
 }
 
