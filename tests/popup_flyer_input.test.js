@@ -37,7 +37,7 @@ const IDLE = "Select a flyer to extract its event date.";
 const PROCESSING = "Reading the flyer...";
 const SUCCESS = "Found an event date. Review it below.";
 const NO_DATE_FOUND =
-  "No date was readable on this flyer. Use Edit to enter it.";
+  "No event date was recognized on this flyer. Use Edit to enter it.";
 const CONNECTION_ERROR =
   "Cannot reach the extractor. Reinstall the native host and reload.";
 

@@ -190,8 +190,12 @@ it as a sentence rather than the raw code:
 | `no_date_found`           | No recognizable date                                    | Yes           |
 
 A printed four-digit year (0001-9999) is never changed, even when it is in the
-past. Two-digit years (`2/17/26`) and other malformed year suffixes reject the
-whole date rather than being guessed or dropped. The 90-day warning threshold is
+past. An exactly two-digit year always means 2000 + its value (`10.10.26`,
+`2/17/26`, `August 21 '26`, `AUGUST 21 26` -> 2026; `00` -> 2000; `99` -> 2099),
+and a past result is flagged for review, never moved forward. Numeric dates may
+use slashes, hyphens or (with a year) periods, but one separator throughout;
+mixed separators (`10/10.26`) and other malformed year suffixes (`10.10.226`,
+`Aug 21 '2026`) reject the whole date rather than leaving a partial one. The 90-day warning threshold is
 `DISTANT_INFERRED_DAYS` in `src/pipeline.py`; the 366-day one for printed dates
 is `DISTANT_EXPLICIT_DAYS`. Both only warn - the date is never rejected.
 

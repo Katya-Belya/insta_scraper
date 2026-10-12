@@ -361,6 +361,35 @@ test("Accept enables both calendar actions with the accepted date", async () => 
   assert.match(await popup.icsText(), /DTSTART;VALUE=DATE:20270327/);
 });
 
+test("an accepted past date keeps that date in Google Calendar and ICS", async () => {
+  const pastResult = {
+    filename: "1000035676.jpg",
+    eventDate: "2026-10-10",
+    status: "explicit_past_date",
+    needsReview: true,
+  };
+  const browser = createBrowser({ host: { respond: () => hostResult(pastResult) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(pastResult.filename);
+
+  // The recognized date is shown with a past-date warning, not "No date found".
+  assert.strictEqual(popup.elements["event-date"].textContent, "10-10-2026");
+  assert.match(popup.elements["status"].textContent, /already passed/);
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+  assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+
+  popup.elements["accept"].click();
+  await flush();
+  assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
+
+  popup.elements["add-to-google-calendar"].click();
+  assert.match(browser.tabs[0], /dates=20261010%2F20261011/);
+
+  popup.elements["export"].click();
+  assert.match(await popup.icsText(), /DTSTART;VALUE=DATE:20261010/);
+});
+
 test("both calendar actions are off while editing and use the saved date", async () => {
   const browser = createBrowser({ host: { respond: () => hostResult(OK_RESULT) } });
   const popup = browser.openPopup();

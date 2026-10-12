@@ -252,3 +252,61 @@ def test_today_is_resolved_once_per_call(ocr_text, monkeypatch):
     assert seen == [date(2026, 10, 7), date(2026, 10, 7)]
     assert result.event_date == "2026-10-07"
     assert result.status == "inferred_year"
+
+
+# ---------------------------------------------------------------------------
+# Two-digit years and period dates, against a fixed 2026-10-12 reference
+# ---------------------------------------------------------------------------
+
+
+REHEARSAL_TODAY = date(2026, 10, 12)
+
+
+@pytest.mark.parametrize(
+    "text,expected_date,expected_found",
+    [
+        ("SAVE THE DATE 10.10.26", "2026-10-10", "October 10, 2026"),
+        ("C3W SEPT. 12 '26 HOWARD THEATRE", "2026-09-12", "September 12, 2026"),
+        ("CLUB OSCURO AUGUST 21 26 10PM", "2026-08-21", "August 21, 2026"),
+        ("8.21.26", "2026-08-21", "August 21, 2026"),
+    ],
+)
+def test_printed_two_digit_past_date_is_shown_and_flagged(
+    ocr_text, text, expected_date, expected_found
+):
+    """A recognized past date is reported, not 'no date found'."""
+    result = ocr_text(text, today=REHEARSAL_TODAY)
+    assert result.event_date == expected_date
+    assert result.date_found == expected_found
+    assert result.status == "explicit_past_date"
+    assert result.valid is True
+    assert result.needs_review is True
+
+
+def test_printed_two_digit_future_date_is_ok(ocr_text):
+    result = ocr_text("11.14.26", today=REHEARSAL_TODAY)
+    assert (result.event_date, result.status) == ("2026-11-14", "ok")
+    assert result.needs_review is False
+
+
+def test_two_digit_year_invalid_date_is_reported_as_invalid(ocr_text):
+    result = ocr_text("2.30.26", today=REHEARSAL_TODAY)
+    assert result.status == "invalid_date"
+    assert result.event_date is None
+
+
+@pytest.mark.parametrize("text", ["10.10.226", "10/10.26", "Aug 21 '2026"])
+def test_malformed_suffix_is_not_a_partial_date(ocr_text, text):
+    result = ocr_text(text, today=REHEARSAL_TODAY)
+    assert result.status == "no_date_found"
+    assert result.event_date is None
+    assert result.date_found is None
+
+
+def test_vendor_deadline_does_not_replace_a_passed_event(ocr_text):
+    result = ocr_text(
+        "SAVE THE DATE 10.10.26 VENDOR DEADLINE 9.10.26",
+        today=REHEARSAL_TODAY,
+    )
+    assert result.event_date == "2026-10-10"
+    assert result.status == "explicit_past_date"

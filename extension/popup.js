@@ -34,7 +34,7 @@ const STATES = {
     tone: "is-success",
   },
   noDateFound: {
-    text: "No date was readable on this flyer. Use Edit to enter it.",
+    text: "No event date was recognized on this flyer. Use Edit to enter it.",
     tone: "is-error",
   },
   invalidDate: {
