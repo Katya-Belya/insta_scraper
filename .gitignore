@@ -25,3 +25,4 @@ results.csv
 extension/latest_result.js
 events.ics
 results_clean.csv
+native_host/installed/

@@ -14,7 +14,7 @@ REFERENCE_TODAY = date(2026, 1, 1)
 def main() -> None:
     image_paths = sorted(
         path
-        for path in RAW_DIR.iterdir()
+        for path in RAW_DIR.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
 
@@ -24,7 +24,7 @@ def main() -> None:
 
     for image_path in image_paths:
         print("-" * 60)
-        print(f"Filename: {image_path.name}")
+        print(f"File: {image_path.relative_to(RAW_DIR).as_posix()}")
 
         try:
             result = extract_event_date(
@@ -41,6 +41,8 @@ def main() -> None:
         print(f"Date found: {result.date_found}")
         print(f"Event date: {result.event_date}")
         print(f"Valid: {result.valid}")
+        print(f"Status: {result.status}")
+        print(f"Needs review: {result.needs_review}")
 
     print("-" * 60)
 

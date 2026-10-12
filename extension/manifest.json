@@ -3,8 +3,14 @@
   "name": "Flyer Event Extractor",
   "version": "0.1.0",
   "description": "Extract event information from flyers.",
-  "permissions": ["storage", "nativeMessaging"],
+  "permissions": [
+    "storage",
+    "nativeMessaging"
+  ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
   }
 }

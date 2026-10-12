@@ -34,9 +34,11 @@ const ELEMENT_IDS = [
   "result",
   "event-date",
   "event-date-input",
+  "original-extraction",
   "original-event-date-row",
   "original-event-date",
   "status-row",
+  "status-label",
   "status",
   "needs-review",
   "review-status",
@@ -44,6 +46,7 @@ const ELEMENT_IDS = [
   "edit",
   "save",
   "export",
+  "add-to-google-calendar",
   "message",
 ];
 

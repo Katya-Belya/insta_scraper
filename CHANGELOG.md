@@ -234,31 +234,120 @@ extractor itself.
 
 ---
 
-## Current Status
 
-- The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
-- The user selects one flyer in the Chrome popup, which sends it to the native
-  host Chrome launches for it and shows the result as `pending`
-- Nothing has to be started in a terminal first: registering the host once with
-  `python native_host/install_host.py <extension-id>` is the whole setup
-- A command-line run still sends its most recent result to the extension too
-- The popup lets the user Accept the extracted date or Edit and Save a correction
-- The reviewed result persists in `chrome.storage.local`
-- Accepted and edited results can be downloaded as `reviewed_events.ics`
-- Pending results cannot be exported
-- Calendar export uses the reviewed `eventDate`, not the original OCR date
-- The standalone `csv_to_ics.py` remains as an earlier proof of concept; the extension now generates its own calendar file directly in JavaScript
-- OCR remains imperfect, so human review is still part of the workflow
+## Phase 13: Add to Google Calendar
+
+A reviewed event can now go straight into Google Calendar, with no file to
+download and import.
+
+* Added an **Add to Google Calendar** button that opens a prefilled Google
+  Calendar event URL in a new tab
+* Google Calendar receives the reviewed `eventDate`, including any correction
+  made by the user, not the date the pipeline originally read
+* The event is created as an all-day event, and the flyer's filename is
+  temporarily used as its title
+* Renamed **Export to Calendar** to **Export ICS**; the `.ics` download is kept
+  as a separate, portable calendar option and is otherwise unchanged
+* Both calendar options stay disabled while `reviewStatus` is `pending` and
+  become available once the result is `accepted` or `edited`
+* Removed the obsolete Native Messaging ping test UI
 
 ---
 
-## Next Steps
+## Phase 14: Date Reliability — October 7, 2026
 
-- Demonstrate one flyer from selection through review and calendar export in
-  Chrome, with no server started by hand
-- Decide whether `src/server.py` is retired now that nothing calls it
-- Show a small image preview of the selected flyer alongside its filename
-- Continue polishing the popup layout, labels, and wording
+The pre-talk work now prioritizes correct dates and an honest review signal.
+
+- Worked through R4: explicit-year and backdating behavior, including the
+  distinction between a year printed on a flyer and a year inferred by the
+  parser
+- Addressed date-confidence behavior so questionable year or past-date
+  interpretations are not treated as confidently ready without review
+- Continued R5 work on candidate ranking and false-date rejection; remaining
+  OCR and selection failures still need benchmark verification
+- Latest reported validation:
+  `python -m pytest tests/test_dates.py tests/test_pipeline.py -q`
+  — **153 passed in 0.53s**
+
+The passing tests verify the tested date and pipeline behavior. They do not
+establish a new flyer-benchmark accuracy score or verify the Chrome demo path.
+
+---
+
+## Phase 15: Background Extraction and Popup UI Polish
+
+Extraction no longer depends on the popup staying open, and the popup UI work
+planned before the talk is done.
+
+* Added `extension/background.js`, a service worker that owns extraction: the
+  popup reads the flyer and hands it to the worker with
+  `chrome.runtime.sendMessage()`, and the worker talks to the native host over
+  `chrome.runtime.connectNative()`. An open native port keeps the worker
+  alive while Python is working
+* Closing the popup mid-extraction no longer loses the result: the job state
+  and the finished reviewed result live in `chrome.storage.local`, and a
+  reopened popup picks them up. The image itself stays in memory and is never
+  written to storage
+* Added **Clear results**, which removes the stored result and job
+* Added `extension/popup.css`: a Choose -> Review -> Calendar step indicator,
+  a prominent event date with a review-status badge, and warning statuses
+  drawn as an amber callout
+* **Accept date** is unavailable when there is no valid date to confirm;
+  **Save date** accepts only a real calendar date
+* Dates are shown and edited as `MM-DD-YYYY` (one- or two-digit month and day
+  are accepted); storage, Google Calendar and the ICS file keep `YYYY-MM-DD`
+* Once a correction is saved, the original extraction and its warning
+  collapse into an **Original extraction** section
+* **Add to Google Calendar** is the primary calendar action and
+  **Download .ics file** the secondary one; both stay disabled while the
+  review is pending or a date is being edited
+* ICS downloads are named `<flyer-name>_<YYYY-MM-DD>.ics` instead of
+  `reviewed_events.ics`
+* The worker connects to `com.flyer_extractor.host`, the host
+  `native_host/install_host.py` registers, and the manifest no longer asks for
+  the unused `http://127.0.0.1:8756/*` host permission
+* `install_host.py` no longer overwrites the tracked manifest template on
+  Windows: generated files go to the gitignored `native_host/installed/`
+* A host manifest has no `args` field, so instead of relying on one,
+  `install_host.py` writes a launcher (`.sh`, or `.bat` on Windows) that runs
+  the host script with the installer's interpreter, and points the manifest
+  at it
+* Removed the Windows ping POC files (`ping_host.py`, `register_host.bat`,
+  `run_host.bat`, the `com.insta_scraper.native_host` template and its
+  README): nothing used them any more, and they registered a host name the
+  extension does not connect to
+* Added `tests/test_install_host.py`
+* Added `tests/popup_background.test.js`, which runs `popup.js` and
+  `background.js` together over mocked storage and a mocked native port
+
+---
+
+## Current Status
+
+- Flyer selection launches the Python extractor through Native Messaging,
+  from a background worker, so extraction survives the popup closing
+- The popup supports Accept/Edit review and persists the reviewed result
+- Both Google Calendar and ICS export use the reviewed `eventDate`
+- Google Calendar currently creates an all-day event using the filename as title
+- The popup UI polish planned before the talk is done
+- Date/pipeline tests: **153 passing**
+- `tests/popup_flyer_input.test.js` and `tests/popup_review.test.js` currently
+  fail: `tests/popup_harness.js` predates the background worker
+- OCR is still imperfect, so human review remains part of the workflow
+
+---
+
+## Next Steps — Before the October 15 Lightning Talk
+
+1. **Demonstrate one flyer end to end in Chrome**, from selection through
+   review and calendar export, including closing and reopening the popup
+   mid-extraction
+2. **Review the final benchmark and remaining failures**
+3. **Finish slides**
+4. **Rehearse the five-minute talk**
+5. **Prepare a short backup demo recording**
+
+Further feature work can wait until after the talk.
 
 ---
 
@@ -269,7 +358,8 @@ extractor itself.
 - Add duplicate detection
 - Extract multiple events from one flyer
 - Support direct Instagram capture or caption ingestion
-- Continue broader OCR and benchmark improvements
+- Continue broader OCR improvements and evaluation infrastructure beyond the
+  targeted pre-talk benchmark rerun
 
 ---
 
@@ -277,7 +367,10 @@ extractor itself.
 
 - Some flyer date formats and layouts are still not handled correctly
 - Crop selection is not fully generalized across flyers
-- Year selection still relies on heuristics
+- Missing-year selection still relies on heuristics; date fixes and passing
+  tests do not eliminate ambiguous or incorrectly OCR-read flyer dates
+- Navigation/state stability still needs an end-to-end Chrome check
+- Direct-image/webpage capture is not implemented
 - The extension handles only one flyer at a time, so flyers are reviewed and exported one at a time
 - The native host has to be registered once per machine, and again whenever
   Chrome assigns the unpacked extension a new id
@@ -285,5 +378,6 @@ extractor itself.
   requirements installed; Chrome inherits none of the shell's environment
 - Event times are not extracted, so calendar exports are currently all-day placeholders
 - The JPEG filename is temporarily used as the calendar event title
-- The downloaded calendar file always uses the generic name `reviewed_events.ics`
+- The legacy popup tests (`popup_flyer_input.test.js`, `popup_review.test.js`)
+  fail until `tests/popup_harness.js` is updated for the background worker
 - Venue, price, and other event details are not yet included in the export

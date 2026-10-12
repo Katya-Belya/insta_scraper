@@ -9,7 +9,8 @@ path to native_host/flyer_extractor_host.py, and the id Chrome assigned to the
 unpacked extension.
 
 This fills both in from com.flyer_extractor.host.json and writes the result
-where Chrome looks:
+where Chrome looks. The template itself is only ever read: everything this
+script generates goes into native_host/installed/, which is gitignored.
 
     python native_host/install_host.py <extension-id>
 
@@ -25,6 +26,7 @@ packaging is deliberately out of scope for the prototype.
 import argparse
 import json
 import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -35,8 +37,13 @@ HERE = Path(__file__).resolve().parent
 # The manifest with the placeholders still in it, which this script fills in.
 TEMPLATE_PATH = HERE / "com.flyer_extractor.host.json"
 
-# The program Chrome will launch.
+# The Python program that runs the host.
 HOST_SCRIPT = HERE / "flyer_extractor_host.py"
+
+# Where the generated, machine-specific files go: the launcher Chrome starts
+# and, on Windows, the filled-in manifest the registry points at. Never the
+# template's own directory entry, so installing cannot overwrite the template.
+INSTALL_DIR = HERE / "installed"
 
 # Chrome builds an extension id from the letters a-p only, and it is always 32
 # of them. Checking that here turns a typo into a message rather than into a
@@ -60,24 +67,54 @@ MANIFEST_DIRECTORIES = {
 }
 
 
-def build_manifest(extension_id: str, python_executable: str) -> dict:
+def write_launcher(python_executable: str, windows: bool) -> Path:
     """
-    Fill the template in for this machine.
+    Write the small program Chrome starts, which runs the host script.
 
     The host is launched through the same interpreter this script is run with,
     so a project virtual environment stays in use: Chrome inherits none of the
     shell's environment, and a host started as bare `python3` would be the
     system interpreter, without Pillow or pytesseract.
 
-    That is done by pointing `path` at the interpreter and passing the script
-    through `args`, which Chrome appends to the command line. It also avoids
-    depending on the script's executable bit and on the shebang being honored.
+    A host manifest has no field for extra arguments - Chrome runs `path` with
+    only the caller's origin on the command line - so the interpreter and the
+    script are tied together here instead. It also avoids depending on the
+    script's executable bit and on the shebang being honored, and on Windows,
+    where Chrome cannot run a .py file directly, it is the only way in.
+
+    Chrome's own arguments are passed through; the host ignores them.
     """
+
+    INSTALL_DIR.mkdir(exist_ok=True)
+
+    if windows:
+        launcher = INSTALL_DIR / "flyer_extractor_host.bat"
+        # "@echo off" is not cosmetic: an echoed command would land on stdout,
+        # which is the Native Messaging wire. -u keeps replies unbuffered.
+        launcher.write_text(
+            "@echo off\r\n"
+            f'"{python_executable}" -u "{HOST_SCRIPT}" %*\r\n',
+            encoding="utf-8",
+            newline="",
+        )
+    else:
+        launcher = INSTALL_DIR / "flyer_extractor_host.sh"
+        launcher.write_text(
+            "#!/bin/sh\n"
+            f'exec {shlex.quote(python_executable)} -u {shlex.quote(str(HOST_SCRIPT))} "$@"\n',
+            encoding="utf-8",
+        )
+        launcher.chmod(0o755)
+
+    return launcher
+
+
+def build_manifest(extension_id: str, launcher: Path) -> dict:
+    """Fill the template in for this machine, without changing the template."""
 
     manifest = json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
 
-    manifest["path"] = python_executable
-    manifest["args"] = [str(HOST_SCRIPT)]
+    manifest["path"] = str(launcher)
     manifest["allowed_origins"] = [f"chrome-extension://{extension_id}/"]
 
     return manifest
@@ -116,7 +153,7 @@ def install_posix(manifest: dict) -> list[Path]:
 
 def install_windows(manifest: dict) -> list[Path]:
     """
-    Write the manifest next to the host and point the registry at it.
+    Write the manifest into native_host/installed/ and point the registry at it.
 
     Windows Chrome does not read a directory: it reads
     HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\<name>, whose default
@@ -125,7 +162,8 @@ def install_windows(manifest: dict) -> list[Path]:
 
     import winreg
 
-    path = HERE / f"{manifest['name']}.json"
+    INSTALL_DIR.mkdir(exist_ok=True)
+    path = INSTALL_DIR / f"{manifest['name']}.json"
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     key_path = rf"Software\Google\Chrome\NativeMessagingHosts\{manifest['name']}"
@@ -170,9 +208,11 @@ def main(argv=None) -> int:
         print(f"Error: no such interpreter: {python_executable}", file=sys.stderr)
         return 1
 
-    manifest = build_manifest(extension_id, python_executable)
+    windows = sys.platform.startswith("win")
+    launcher = write_launcher(python_executable, windows)
+    manifest = build_manifest(extension_id, launcher)
 
-    if sys.platform.startswith("win"):
+    if windows:
         written = install_windows(manifest)
     else:
         written = install_posix(manifest)
@@ -188,7 +228,7 @@ def main(argv=None) -> int:
     for path in written:
         print(f"Registered {manifest['name']} at {path}")
 
-    print(f"Host command: {python_executable} {HOST_SCRIPT}")
+    print(f"Host command: {launcher} -> {python_executable} {HOST_SCRIPT}")
     print("Reload the extension at chrome://extensions to pick this up.")
 
     return 0
