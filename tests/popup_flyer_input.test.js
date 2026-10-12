@@ -217,7 +217,10 @@ test("an extracted flyer can be accepted and exported", async () => {
   popup.elements["export"].click();
 
   assert.strictEqual(popup.downloads.length, 1);
-  assert.strictEqual(popup.downloads[0].filename, "reviewed_events.ics");
+  assert.strictEqual(
+    popup.downloads[0].filename,
+    "cherry_blossom_market_2027-03-27.ics"
+  );
 });
 
 test("a flyer with no readable date says so and can still be edited", async () => {

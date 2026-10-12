@@ -60,10 +60,6 @@
       <span id="status"></span>
     </p>
 
-    <p class="needs-review-row">
-      Needs review: <span id="needs-review"></span>
-    </p>
-
     <!-- Buttons the user reviews a FlyerResult with -->
     <div class="review-actions">
       <button id="accept" class="btn-primary">Accept date</button>
@@ -83,6 +79,11 @@
       <!-- JavaScript writes review feedback here after a button is clicked -->
       <p id="message" role="status" aria-live="polite"></p>
     </div>
+
+    <details class="details">
+      <summary>Details</summary>
+      <p>Needs review: <span id="needs-review"></span></p>
+    </details>
   </section>
 
   <div class="footer">
