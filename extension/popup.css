@@ -1,0 +1,488 @@
+/*
+ * Popup styles.
+ *
+ * Plain CSS, no framework. The popup's states are read straight from the DOM
+ * popup.js already maintains - the `hidden` and `disabled` attributes, the
+ * tone class on #state-message, and the review classes on #result - so the
+ * layout follows the workflow without extra JavaScript.
+ */
+
+:root {
+  --text: #1f2328;
+  --muted: #5f6670;
+  --line: #d8dde3;
+  --surface: #ffffff;
+  --page: #f6f7f9;
+
+  --accent: #1a5fd0;
+  --accent-hover: #164fae;
+  --accent-soft: #e8f0fd;
+
+  --success: #137333;
+  --success-soft: #e6f4ea;
+  --warning: #8a4b00;
+  --warning-soft: #fff4e0;
+  --warning-line: #f0c27a;
+  --error: #b3261e;
+  --error-soft: #fdecea;
+
+  --radius: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Elements popup.js shows and hides must stay hidden whatever display value
+   a rule below gives them. */
+[hidden] {
+  display: none !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: 14px 16px 16px;
+  background: var(--page);
+  color: var(--text);
+  font: 14px/1.4 var(--font);
+}
+
+p {
+  margin: 0;
+}
+
+/* ---------- Header and progress ---------- */
+
+.app-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.steps {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font-size: 11px;
+}
+
+/* Which step is current comes from the review state:
+   1. no result yet           -> Choose
+   2. result awaiting review  -> Review (also while a date is being edited)
+   3. export is available     -> Calendar */
+body:has(#result[hidden]) .step-choose {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+body:has(#result:not([hidden])) .step-choose {
+  color: var(--success);
+}
+
+body:has(#result:not([hidden])) .step-choose .step-num,
+body:has(#add-to-google-calendar:not(:disabled)) .step-review .step-num {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+body:has(#add-to-google-calendar:not(:disabled)) .step-review {
+  color: var(--success);
+}
+
+body:has(#result:not([hidden])):has(#add-to-google-calendar:disabled) .step-review,
+body:has(#add-to-google-calendar:not(:disabled)) .step-calendar {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---------- Step 1: choose a flyer ---------- */
+
+/* The real file input is replaced by its label, which looks like a button.
+   Hiding it with a class rather than the hidden attribute keeps it focusable
+   from the keyboard. */
+#file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.select-flyer {
+  display: block;
+  padding: 12px;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.select-flyer:hover {
+  background: var(--accent-soft);
+}
+
+/* popup.js disables the input while a flyer is being read. */
+#file-input:disabled + .select-flyer {
+  opacity: 0.5;
+  cursor: progress;
+  pointer-events: none;
+}
+
+#file-input:focus-visible + .select-flyer {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Once a result is on screen, choosing another flyer is a secondary action. */
+body:has(#result:not([hidden])) .select-flyer {
+  padding: 7px;
+  border-style: solid;
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.file-row {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.file-row:has(#filename:empty) {
+  display: none;
+}
+
+#filename {
+  color: var(--text);
+}
+
+/* ---------- Extraction state ---------- */
+
+/* One line describing where the flyer is in the extraction, coloured by how
+   the extraction went. */
+#state-message {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#state-message:empty {
+  display: none;
+}
+
+#state-message.is-working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#state-message.is-working::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#state-message.is-success {
+  color: var(--success);
+  font-weight: 600;
+}
+
+#state-message.is-error {
+  padding: 8px 10px;
+  border-left: 3px solid var(--error);
+  border-radius: 4px;
+  background: var(--error-soft);
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* ---------- Step 2: review the date ---------- */
+
+.result {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: opacity 0.15s;
+}
+
+.date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.date-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Review state as a badge: pending, accepted, or edited. */
+#review-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.review-accepted #review-status,
+.review-edited #review-status {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.event-date-row {
+  margin: 6px 0 2px;
+}
+
+#event-date {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A flyer with no readable date leaves the span empty. */
+#event-date:empty::before {
+  content: "No date found";
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+#event-date-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  font: 600 20px/1.2 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+#event-date-input:focus {
+  outline: 2px solid var(--accent-soft);
+}
+
+.original-date {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* What the pipeline made of the flyer, in words. Always visible: a warning
+   status (past date, distant year, invalid or missing date) is drawn as a
+   warning so it cannot be missed. */
+#status-row {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#status-row:has(#status.is-warning) {
+  border: 1px solid var(--warning-line);
+  background: var(--warning-soft);
+}
+
+#status.is-warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+#status.is-warning::before {
+  content: "\26A0\FE0E  ";
+}
+
+.needs-review-row {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#needs-review {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.is-uncertain #needs-review {
+  color: var(--warning);
+}
+
+/* ---------- Buttons ---------- */
+
+button {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 13px/1.2 var(--font);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--page);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.review-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.review-actions button {
+  flex: 1;
+}
+
+/* Accept only applies to a result nobody has settled yet; once the review
+   is settled, Edit is the only way to change it. */
+.review-accepted #accept,
+.review-edited #accept,
+.result:has(#save:not([hidden])) #accept {
+  display: none;
+}
+
+/* ---------- Step 3: calendar ---------- */
+
+.export-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#add-to-google-calendar {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+#export {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.export-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+#add-to-google-calendar:disabled ~ .hint-ready,
+#add-to-google-calendar:not(:disabled) ~ .hint-locked {
+  display: none;
+}
+
+/* Feedback after a review or export button is clicked. */
+#message {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+#message:empty {
+  display: none;
+}
+
+/* ---------- Clear results ---------- */
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+#clear-results {
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+#clear-results:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--error);
+}
+
+#clear-results:disabled {
+  visibility: hidden;
+}
