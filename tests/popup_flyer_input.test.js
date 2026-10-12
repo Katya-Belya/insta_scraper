@@ -84,10 +84,10 @@ test("an idle popup still reopens the last reviewed result", () => {
     popup.elements["filename"].textContent,
     "august_happy_hour.jpg"
   );
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-08-05");
+  assert.strictEqual(popup.elements["event-date"].textContent, "08-05-2027");
   assert.strictEqual(
     popup.elements["original-event-date"].textContent,
-    "2027-08-04"
+    "08-04-2027"
   );
   assert.strictEqual(popup.elements["review-status"].textContent, "edited");
 
@@ -185,7 +185,7 @@ test("a successful extraction is stored as a pending review", async () => {
   });
 
   assert.strictEqual(popup.elements["result"].hidden, false);
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(popup.elements["review-status"].textContent, "pending");
   assert.strictEqual(
     popup.elements["status"].textContent,
@@ -253,7 +253,7 @@ test("a flyer with no readable date says so and can still be edited", async () =
   );
 
   popup.elements["edit"].click();
-  popup.elements["event-date-input"].value = "2027-09-01";
+  popup.elements["event-date-input"].value = "09-01-2027";
   popup.elements["save"].click();
 
   assertRecord(popup.stored(), {
@@ -394,7 +394,7 @@ test("a failed extraction leaves the previous reviewed result alone", async () =
   // The reviewed result survives a failed extraction untouched: it is
   // replaced only when a new one actually succeeds.
   assertRecord(popup.stored(), stored.flyerResult);
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-08-05");
+  assert.strictEqual(popup.elements["event-date"].textContent, "08-05-2027");
   assert.strictEqual(popup.elements["review-status"].textContent, "edited");
 
   // The flyer named above the result is still the one the result is about,
@@ -474,7 +474,7 @@ test("a second selection wins over one still being read", async () => {
     popup.elements["filename"].textContent,
     "cherry_blossom_market.jpeg"
   );
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assertRecord(popup.stored(), {
     filename: "cherry_blossom_market.jpeg",
     originalEventDate: "2027-03-27",
@@ -504,7 +504,7 @@ test("a result from a command-line run still opens the popup", async () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
   assert.strictEqual(popup.elements["result"].hidden, false);
-  assert.strictEqual(popup.elements["event-date"].textContent, "2027-03-27");
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
   assert.strictEqual(popup.elements["state-message"].textContent, SUCCESS);
   assert.strictEqual(
     popup.elements["status"].textContent,
