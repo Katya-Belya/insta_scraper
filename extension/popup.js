@@ -242,6 +242,14 @@ function setEditing(editing) {
   // date as if it were the one the pipeline read.
   document.getElementById("accept").disabled =
     editing || reviewedResult.reviewStatus !== REVIEW_PENDING;
+
+  // Calendar output is available only after the user reviews the result, and
+  // not while a date is being edited: the edit is unsaved until Save, so the
+  // calendar would get the old date.
+  const calendarLocked =
+    editing || reviewedResult.reviewStatus === REVIEW_PENDING;
+  document.getElementById("export").disabled = calendarLocked;
+  document.getElementById("add-to-google-calendar").disabled = calendarLocked;
 }
 
 // Display the reviewed result in the popup.
@@ -249,7 +257,16 @@ function renderResult(result) {
   showFlyerName(result.filename);
 
   // The review section only means something once there is a result.
-  document.getElementById("result").hidden = false;
+  const resultElement = document.getElementById("result");
+  resultElement.hidden = false;
+
+  // popup.css styles the review from these: the status badge, which buttons
+  // lead, and the needs-review flag.
+  resultElement.className = [
+    "result",
+    `review-${result.reviewStatus}`,
+    result.needsReview ? "is-uncertain" : "",
+  ].join(" ").trim();
 
   document.getElementById("needs-review").textContent =
     result.needsReview ? "Yes" : "No";
@@ -275,11 +292,6 @@ function renderResult(result) {
   statusElement.className = explanation.warning ? "is-warning" : "";
 
   document.getElementById("review-status").textContent = result.reviewStatus;
-
-  // Calendar output is available only after the user reviews the result.
-  const reviewPending = result.reviewStatus === REVIEW_PENDING;
-  document.getElementById("export").disabled = reviewPending;
-  document.getElementById("add-to-google-calendar").disabled = reviewPending;
 
   // Showing a result always leaves the date read-only; editing starts only
   // when the user asks for it.
