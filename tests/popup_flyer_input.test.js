@@ -426,6 +426,9 @@ test("a new extraction replaces a settled review", async () => {
 
   assert.strictEqual(popup.elements["accept"].disabled, false);
   assert.strictEqual(popup.elements["original-event-date-row"].hidden, true);
+
+  // The new flyer has not been reviewed, so export is off again.
+  assert.strictEqual(popup.elements["export"].disabled, true);
 });
 
 test("a second selection wins over one still being read", async () => {

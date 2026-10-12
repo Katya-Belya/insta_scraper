@@ -1,84 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Flyer Event Extractor</title>
-
-  <style>
-    body {
-      width: 260px;
-      padding: 12px;
-      font-family: Arial, sans-serif;
-    }
-
-    h2 {
-      margin-top: 0;
-    }
-
-    p {
-      margin: 10px 0;
-    }
-
-    button {
-      margin-right: 6px;
-    }
-
-    #event-date-input {
-      width: 110px;
-    }
-
-    /* The real file input is replaced by its label, which can be styled like
-       a button. Hiding it with a class rather than the hidden attribute keeps
-       it focusable from the keyboard. */
-    #file-input {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-    }
-
-    .select-flyer {
-      display: block;
-      padding: 8px;
-      border: 1px solid #767676;
-      border-radius: 4px;
-      background: #f4f4f4;
-      text-align: center;
-      cursor: pointer;
-    }
-
-    .select-flyer:hover {
-      background: #e8e8e8;
-    }
-
-    #file-input:focus + .select-flyer {
-      outline: 2px solid #1a73e8;
-    }
-
-    /* One line describing where the flyer is in the extraction, coloured by
-       how the extraction went. */
-    #state-message {
-      min-height: 1em;
-      color: #444;
-    }
-
-    #state-message.is-working {
-      color: #1a73e8;
-    }
-
-    #state-message.is-success {
-      color: #137333;
-    }
-
-    #state-message.is-error {
-      color: #c5221f;
-    }
-
-    .result {
-      border-top: 1px solid #ddd;
-      margin-top: 12px;
-      padding-top: 4px;
-    }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
+<body>
+  <h1 class="app-title">Flyer Event Extractor</h1>
+
+  <!-- Choose -> Review -> Calendar. popup.css highlights the current step
+       from the review state, so this needs no JavaScript. -->
+  <ol class="steps" aria-label="Steps">
+    <li class="step step-choose"><span class="step-num">1</span>Choose</li>
+    <li class="step step-review"><span class="step-num">2</span>Review</li>
+    <li class="step step-calendar"><span class="step-num">3</span>Calendar</li>
+  </ol>
 
   <!-- Step 1: choose one flyer. The input is visually replaced by its label,
        so the user sees a button rather than a bare file field. -->
@@ -87,61 +23,80 @@
     Select Flyer
   </label>
 
-  <p>
-    <strong>File:</strong>
-    <span id="filename"></span>
+  <p class="file-row">
+    Flyer: <span id="filename"></span>
   </p>
 
   <!-- Idle, processing, success, no date found, invalid file, or connection
        error: whichever state the flyer is in right now. -->
-  <p id="state-message"></p>
+  <p id="state-message" role="status" aria-live="polite"></p>
 
-  <!-- Step 2: review what the pipeline read. Hidden until there is a result. -->
-  <div id="result" class="result" hidden>
-    <p>
-      <strong>Event date:</strong>
+  <!-- Step 2: review what the pipeline read. Hidden until there is a result.
+       popup.js adds review-pending / review-accepted / review-edited and
+       is-uncertain to this element's classes. -->
+  <section id="result" class="result" hidden aria-label="Review the event date">
+    <div class="date-header">
+      <span class="date-label">Event date</span>
+      <span id="review-status"></span>
+    </div>
+
+    <p class="event-date-row">
       <span id="event-date"></span>
       <!-- Shown instead of the span while the date is being edited -->
-      <input id="event-date-input" type="text" hidden>
+      <input id="event-date-input" type="text" hidden
+             placeholder="YYYY-MM-DD" aria-label="Event date (YYYY-MM-DD)">
     </p>
 
     <!-- Only shown once the reviewed date differs from the one OCR read -->
-    <p id="original-event-date-row" hidden>
-      <strong>Original date:</strong>
-      <span id="original-event-date"></span>
+    <p id="original-event-date-row" class="original-date" hidden>
+      Flyer read: <span id="original-event-date"></span>
     </p>
 
-    <!-- Only shown for a result this popup has a pipeline status for -->
-    <p id="status-row">
-      <strong>Status:</strong>
-      <span id="status"></span>
-    </p>
-
-    <p>
-      <strong>Needs review:</strong>
-      <span id="needs-review"></span>
-    </p>
-
-    <p>
-      <strong>Review status:</strong>
-      <span id="review-status"></span>
+    <!-- Shown when the pipeline flagged this result for a closer look -->
+    <p class="review-warning" role="note">
+      <strong>Double-check this date.</strong> The reader was not confident
+      about it, so compare it with the flyer.
     </p>
 
     <!-- Buttons the user reviews a FlyerResult with -->
-    <button id="accept">Accept</button>
-    <button id="edit">Edit</button>
-    <!-- Only shown while the date is being edited -->
-    <button id="save" hidden>Save</button>
-    <button id="export">Export to Calendar</button>
+    <div class="review-actions">
+      <button id="accept" class="btn-primary">Accept date</button>
+      <button id="edit">Edit date</button>
+      <!-- Only shown while the date is being edited -->
+      <button id="save" class="btn-primary" hidden>Save date</button>
+    </div>
 
-    <!-- JavaScript writes review feedback here after a button is clicked -->
-    <p id="message"></p>
-  </div>
+    <!-- Step 3: export. Disabled until the date is accepted or edited. -->
+    <div class="export-section">
+      <button id="export" class="btn-primary" disabled>Export to Calendar</button>
+      <p class="export-hint hint-locked">Accept or save the date to export.</p>
+      <p class="export-hint hint-ready">Downloads an .ics file for your calendar app.</p>
+
+      <!-- JavaScript writes review feedback here after a button is clicked -->
+      <p id="message" role="status" aria-live="polite"></p>
+    </div>
+
+    <details class="details">
+      <summary>Extraction details</summary>
+      <dl>
+        <!-- Only shown for a result this popup has a pipeline status for -->
+        <div id="status-row" class="detail-row">
+          <dt>Pipeline status</dt>
+          <dd id="status"></dd>
+        </div>
+        <div class="detail-row">
+          <dt>Needs review</dt>
+          <dd id="needs-review"></dd>
+        </div>
+      </dl>
+    </details>
+  </section>
 
   <!-- Load the popup behavior.
        latest_result.js is written by a command-line pipeline run and may not
        exist; the popup works without it. -->
-<script src="latest_result.js"></script>
-<script src="ics.js"></script>
-<script src="popup.js"></script>
+  <script src="latest_result.js"></script>
+  <script src="ics.js"></script>
+  <script src="popup.js"></script>
 </body>
+</html>

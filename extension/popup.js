@@ -202,6 +202,11 @@ function setEditing(editing) {
   // date as if it were the one the pipeline read.
   document.getElementById("accept").disabled =
     editing || reviewedResult.reviewStatus !== REVIEW_PENDING;
+
+  // Export waits until the review has settled on a date: a pending result
+  // has not been checked, and one being edited has an unsaved date.
+  document.getElementById("export").disabled =
+    editing || reviewedResult.reviewStatus === REVIEW_PENDING;
 }
 
 // Display the reviewed result in the popup.
@@ -209,7 +214,16 @@ function renderResult(result) {
   showFlyerName(result.filename);
 
   // The review section only means something once there is a result.
-  document.getElementById("result").hidden = false;
+  const resultElement = document.getElementById("result");
+  resultElement.hidden = false;
+
+  // popup.css styles the review from these: the status badge, which buttons
+  // lead, and the warning for a result the pipeline flagged for review.
+  resultElement.className = [
+    "result",
+    `review-${result.reviewStatus}`,
+    result.needsReview ? "is-uncertain" : "",
+  ].join(" ").trim();
 
   document.getElementById("needs-review").textContent =
     result.needsReview ? "Yes" : "No";

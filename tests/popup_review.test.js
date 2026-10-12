@@ -305,11 +305,66 @@ test("clicks before the stored review arrives are ignored", () => {
 test("a pending result cannot be exported", () => {
   const popup = openPopup(PIPELINE_RESULT, {});
 
+  // Export stays switched off until the date has been accepted or edited, so
+  // a click on it never reaches the popup.
+  assert.strictEqual(popup.elements["export"].disabled, true);
+
   popup.elements["export"].click();
 
+  assert.strictEqual(popup.downloads.length, 0);
+});
+
+test("Accept enables export", () => {
+  const popup = openPopup(PIPELINE_RESULT, {});
+
+  popup.elements["accept"].click();
+
+  assert.strictEqual(popup.elements["export"].disabled, false);
+});
+
+test("export is disabled while the date is being edited", () => {
+  const popup = openPopup(PIPELINE_RESULT, {});
+
+  popup.elements["accept"].click();
+  popup.elements["edit"].click();
+
+  // The date on screen is not saved yet, so there is nothing to export.
+  assert.strictEqual(popup.elements["export"].disabled, true);
+
+  popup.elements["event-date-input"].value = "2027-03-29";
+  popup.elements["save"].click();
+
+  assert.strictEqual(popup.elements["export"].disabled, false);
+});
+
+test("a reopened settled review can be exported", () => {
+  const popup = openPopup(null, {
+    flyerResult: {
+      filename: "cherry_blossom_market.jpeg",
+      originalEventDate: "2027-03-27",
+      eventDate: "2027-03-27",
+      needsReview: false,
+      reviewStatus: "accepted",
+    },
+  });
+
+  assert.strictEqual(popup.elements["export"].disabled, false);
+});
+
+test("the review state and uncertainty flag are exposed for styling", () => {
+  const popup = openPopup({ ...PIPELINE_RESULT, needsReview: true }, {});
+
   assert.strictEqual(
-    popup.elements["message"].textContent,
-    "Accept or edit the result before exporting."
+    popup.elements["result"].className,
+    "result review-pending is-uncertain"
+  );
+
+  popup.elements["accept"].click();
+
+  // Accepting does not clear the pipeline's flag.
+  assert.strictEqual(
+    popup.elements["result"].className,
+    "result review-accepted is-uncertain"
   );
 });
 

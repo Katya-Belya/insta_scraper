@@ -159,8 +159,9 @@ The popup keeps one canonical reviewed result per flyer:
 | `needsReview`       | The pipeline's own "a human should look at this"  |
 | `reviewStatus`      | `pending`, `accepted`, or `edited`                |
 
-**Accept** confirms the extracted date, **Edit** and **Save** replace it, and
-**Export to Calendar** writes `reviewed_events.ics` from the reviewed
+**Accept date** confirms the extracted date, **Edit date** and **Save date**
+replace it, and **Export to Calendar** (disabled until the date is accepted or
+saved) writes `reviewed_events.ics` from the reviewed
 `eventDate`. Only `accepted` and `edited` results can be exported.
 
 The command-line runner still works as it did: `python -m src.pipeline <path>`
