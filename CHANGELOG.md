@@ -253,13 +253,36 @@ download and import.
 ---
 
 
+## Phase 14: Date Reliability — October 7, 2026
+
+The pre-talk work now prioritizes correct dates and an honest review signal.
+
+- Worked through R4: explicit-year and backdating behavior, including the
+  distinction between a year printed on a flyer and a year inferred by the
+  parser
+- Addressed date-confidence behavior so questionable year or past-date
+  interpretations are not treated as confidently ready without review
+- Continued R5 work on candidate ranking and false-date rejection; remaining
+  OCR and selection failures still need benchmark verification
+- Latest reported validation:
+  `python -m pytest tests/test_dates.py tests/test_pipeline.py -q`
+  — **153 passed in 0.53s**
+
+The passing tests verify the tested date and pipeline behavior. They do not
+establish a new flyer-benchmark accuracy score or verify the Chrome demo path.
+
+---
+
 ## Current Status
 
 - The pipeline processes flyer images, extracts a normalized event date, and writes `results.csv`
 - The user selects one flyer in the Chrome popup, which sends it to the native
   host Chrome launches for it and shows the result as `pending`
-- Nothing has to be started in a terminal first: registering the host once with
-  `python native_host/install_host.py <extension-id>` is the whole setup
+- No HTTP server needs to be started in a terminal first; Chrome launches the
+  registered native host
+- Host registration remains machine-specific. A missing manifest was resolved
+  on September 30 by running `register_host.bat`; host name, extension ID,
+  interpreter, and paths must still match the current installation
 - A command-line run still sends its most recent result to the extension too
 - The popup lets the user Accept the extracted date or Edit and Save a correction
 - The reviewed result persists in `chrome.storage.local`
@@ -267,17 +290,38 @@ download and import.
 - Pending results cannot be sent to a calendar
 - Both calendar options use the reviewed `eventDate`, not the original OCR date
 - The standalone `csv_to_ics.py` remains as an earlier proof of concept; the extension now generates its own calendar file directly in JavaScript
+- Date and pipeline tests most recently reported 153 passing tests
 - OCR remains imperfect, so human review is still part of the workflow
+- Earlier benchmark results were 8/10 on the original set and 7/10 on a harder
+  set; no updated post-fix benchmark score is recorded here
+- UI polish and navigation/state stability are the next demo-facing priorities
+- A five-slide lightning-talk draft exists; it still needs to reflect the final
+  demo and be rehearsed for the strict five-minute limit
 
 ---
 
-## Next Steps
+## Next Steps — Before the October 15 Lightning Talk
 
-- Demonstrate one flyer from selection through review and calendar export in
-  Chrome, with no server started by hand
-- Decide whether `src/server.py` is retired now that nothing calls it
-- Show a small image preview of the selected flyer alongside its filename
-- Continue polishing the popup layout, labels, and wording
+1. **Checkpoint the working extension.** Commit the current working version
+   and verify choose flyer → extract → Accept/Edit → Add to Google Calendar.
+   Confirm Export ICS also uses the reviewed date.
+2. **Re-run the same benchmark.** Record expected versus selected dates and
+   inspect remaining failures. Separate OCR misses from candidate-selection
+   and year-inference errors; finish any blocking R4/R5 fixes.
+3. **Stabilize and polish the popup.** Test closing/reopening the popup and
+   navigating away during extraction. Fix workflow-breaking state loss, then
+   improve layout, spacing, labels, status feedback, and action hierarchy.
+   A small flyer preview is a possible improvement, not yet implemented.
+4. **Update slides and rehearse.** Use the existing five-slide draft, show the
+   human-review step and remaining limitations, and rehearse within five
+   minutes. Prepare screenshots or a short recording as a demo fallback.
+5. **Explore direct-image or screen capture only if time remains.** Assess a
+   small proof of concept for obtaining an on-screen flyer without manually
+   saving it. This remains exploratory and is not required for the talk.
+
+Fix host registration, extension-ID configuration, or repository setup before
+these steps only when it blocks the working demo. Retiring the unused HTTP
+server and broader repository cleanup can wait until after the talk.
 
 ---
 
@@ -288,7 +332,8 @@ download and import.
 - Add duplicate detection
 - Extract multiple events from one flyer
 - Support direct Instagram capture or caption ingestion
-- Continue broader OCR and benchmark improvements
+- Continue broader OCR improvements and evaluation infrastructure beyond the
+  targeted pre-talk benchmark rerun
 
 ---
 
@@ -296,7 +341,10 @@ download and import.
 
 - Some flyer date formats and layouts are still not handled correctly
 - Crop selection is not fully generalized across flyers
-- Year selection still relies on heuristics
+- Missing-year selection still relies on heuristics; date fixes and passing
+  tests do not eliminate ambiguous or incorrectly OCR-read flyer dates
+- Navigation/state stability still needs an end-to-end Chrome check
+- Direct-image/webpage capture is not implemented
 - The extension handles only one flyer at a time, so flyers are reviewed and exported one at a time
 - The native host has to be registered once per machine, and again whenever
   Chrome assigns the unpacked extension a new id
