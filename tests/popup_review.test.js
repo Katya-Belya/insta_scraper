@@ -338,7 +338,7 @@ test("an edited result downloads an ICS file", () => {
   assert.strictEqual(popup.downloads.length, 1);
   assert.strictEqual(
     popup.downloads[0].filename,
-    "reviewed_events.ics"
+    "cherry_blossom_market_2027-03-29.ics"
   );
   assert.strictEqual(
     popup.elements["message"].textContent,

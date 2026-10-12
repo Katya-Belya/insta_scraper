@@ -658,6 +658,95 @@ test("an accepted warning keeps no original-extraction label", async () => {
   assert.strictEqual(popup.elements["status"].className, "is-warning");
 });
 
+test("an empty popup has both calendar actions off", async () => {
+  const browser = createBrowser({ host: { respond: () => null } });
+  const popup = browser.openPopup();
+  await flush();
+
+  assert.strictEqual(popup.elements["result"].hidden, true);
+  assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+});
+
+for (const review of ["accepted", "edited"]) {
+  test(`Clear results after an ${review} result turns the calendar off`, async () => {
+    const browser = createBrowser({ host: { respond: () => hostResult(OK_RESULT) } });
+    const popup = browser.openPopup();
+    await flush();
+    await popup.selectFlyer(OK_RESULT.filename);
+
+    if (review === "accepted") {
+      popup.elements["accept"].click();
+    } else {
+      popup.elements["edit"].click();
+      popup.elements["event-date-input"].value = "2027-03-29";
+      popup.elements["save"].click();
+    }
+    await flush();
+    assert.strictEqual(browser.store.flyerResult.reviewStatus, review);
+    assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
+
+    popup.elements["clear-results"].click();
+    await flush();
+
+    assert.strictEqual(popup.elements["result"].hidden, true);
+    assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+
+    // A popup opened after clearing starts empty as well.
+    const reopened = browser.openPopup();
+    await flush();
+    assert.strictEqual(reopened.elements["result"].hidden, true);
+    assert.deepStrictEqual(calendarState(reopened), { google: true, ics: true });
+  });
+}
+
+// Accept a result with this filename and download its ICS file.
+async function downloadIcsFor(filename) {
+  const result = { ...OK_RESULT, filename };
+  const browser = createBrowser({ host: { respond: () => hostResult(result) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(filename || "unnamed.jpeg");
+  popup.elements["accept"].click();
+  await flush();
+  popup.elements["export"].click();
+  return popup;
+}
+
+for (const [filename, expected] of [
+  ["cherry_blossom_market.jpeg", "cherry_blossom_market_2027-03-27.ics"],
+  ["1000035675.jpg", "1000035675_2027-03-27.ics"],
+  ["Spring Fair.PNG", "Spring_Fair_2027-03-27.ics"],
+  ['a/b\\c:d*e?f"g<h>i|j.webp', "a_b_c_d_e_f_g_h_i_j_2027-03-27.ics"],
+  ["???.png", "flyer-event_2027-03-27.ics"],
+  ["  ...jpg", "flyer-event_2027-03-27.ics"],
+]) {
+  test(`the ICS file for ${JSON.stringify(filename)} is ${expected}`, async () => {
+    const popup = await downloadIcsFor(filename);
+
+    assert.strictEqual(popup.downloads.length, 1);
+    assert.strictEqual(popup.downloads[0].filename, expected);
+  });
+}
+
+test("the ICS file name uses the saved edited date; contents are unchanged", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(OK_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(OK_RESULT.filename);
+  popup.elements["edit"].click();
+  popup.elements["event-date-input"].value = "2027-04-02";
+  popup.elements["save"].click();
+  await flush();
+  popup.elements["export"].click();
+
+  assert.strictEqual(popup.downloads[0].filename, "cherry_blossom_market_2027-04-02.ics");
+
+  const ics = await popup.icsText();
+  assert.match(ics, /SUMMARY:cherry_blossom_market\.jpeg/);
+  assert.match(ics, /DTSTART;VALUE=DATE:20270402/);
+  assert.match(ics, /DTEND;VALUE=DATE:20270403/);
+});
+
 const CONNECTION_ERROR =
   "Cannot reach the extractor. Reinstall the native host and reload.";
 

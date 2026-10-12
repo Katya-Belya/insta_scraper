@@ -186,7 +186,9 @@ Save date accepts only a real calendar date in `YYYY-MM-DD` form and otherwise
 keeps the edit open. After a correction, a pipeline warning is labelled
 "Original extraction warning", since it describes the date the pipeline read.
 **Add to Google Calendar** opens a prefilled all-day event and
-**Download .ics file** writes `reviewed_events.ics`, both from the saved
+**Download .ics file** writes `<flyer-name>_<YYYY-MM-DD>.ics` (for example
+`cherry_blossom_market_2027-03-27.ics`, or `flyer-event_<date>.ics` when the
+flyer name has nothing usable), both from the saved
 reviewed `eventDate`. Both stay disabled until the result is `accepted` or
 `edited`, and while a date is being edited. **Clear results** removes the
 stored result.

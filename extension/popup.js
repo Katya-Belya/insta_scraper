@@ -350,6 +350,12 @@ function renderResult(result) {
 function renderIdle() {
   showFlyerName(null);
   document.getElementById("result").hidden = true;
+
+  // Nothing is reviewed, so nothing can go to a calendar. Without this the
+  // buttons keep whatever state the last (now cleared) result left them in.
+  document.getElementById("export").disabled = true;
+  document.getElementById("add-to-google-calendar").disabled = true;
+
   setState("idle");
 }
 
@@ -457,6 +463,28 @@ function readFileAsBase64(file) {
 
     reader.readAsDataURL(file);
   });
+}
+
+// Name the downloaded calendar file after the flyer and its reviewed date:
+// "<flyer-name>_<YYYY-MM-DD>.ics", e.g. "cherry_blossom_market_2027-03-27.ics".
+//
+// The image extension is dropped, characters that are not safe in a filename
+// on Windows, macOS or Linux become "_", and a flyer with no usable name
+// falls back to "flyer-event".
+function icsFilename(result) {
+  const imageExtension = new RegExp(
+    `(${IMAGE_EXTENSIONS.map((ext) => ext.replace(".", "\\.")).join("|")})$`,
+    "i"
+  );
+
+  const baseName = String(result.filename ?? "")
+    .replace(imageExtension, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f\s]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[._]+|[._]+$/g, "")
+    .slice(0, 100);
+
+  return `${baseName || "flyer-event"}_${result.eventDate}.ics`;
 }
 
 // Convert YYYY-MM-DD to the format Google Calendar expects.
@@ -620,7 +648,7 @@ document.getElementById("export").addEventListener("click", () => {
   const link = document.createElement("a");
 
   link.href = downloadUrl;
-  link.download = "reviewed_events.ics";
+  link.download = icsFilename(reviewedResult);
   link.click();
 
   URL.revokeObjectURL(downloadUrl);
