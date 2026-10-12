@@ -85,10 +85,20 @@ _NAMED_YEAR = (
     r"|\s*['\u2019](?P<{name}_short_year>\d+)\b)?"
 )
 
+# What may end a month-name day. Normally a word boundary, but OCR sometimes
+# glues "at" and a start time onto the day ("OCTOBER 31at6 PM"), so "at" is
+# also accepted when a recognizable time follows it. Any other letters glued
+# to the day ("OCTOBER 31abc") still refuse the match.
+_DAY_END = (
+    r"(?:\b|(?=AT\s*\d{1,2}(?::\d{2})?\s*(?:AM|PM|A\.M|P\.M)\b"
+    r"|AT\s*\d{1,2}:\d{2}(?!\d)))"
+)
+
 # Matches dates such as:
 #   MARCH 27 / MARCH 27th / March 27t   (full month, OCR ordinals)
 #   APR 25 / APR. 25 / AUG.12           (abbrev, optional period, flexible space)
 #   AUGUST 24, 2026 / AUG 24 2026       (month name with a printed year)
+#   OCTOBER 31at6 PM                    (OCR-glued "at" plus a time)
 #   (8/4) / 8-4                         (numeric month/day, no year)
 #   8/24/2026 / 8-24-26                 (numeric with a printed year)
 #   10.10.26 / 10.10.2026               (periods: only with a printed year)
@@ -100,9 +110,11 @@ _NAMED_YEAR = (
 # The numeric forms refuse to start right after "<digit>." so that the tail of
 # a mixed-separator date ("10.10/26", "10.10-26") is never read as "10/26".
 DATE_RE = re.compile(
-    rf"\b({_FULL})[\s.,:;()\-]+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    rf"\b({_FULL})[\s.,:;()\-]+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?"
+    + _DAY_END
     + _NAMED_YEAR.format(name="full")
-    + rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
+    + rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?"
+    + _DAY_END
     + _NAMED_YEAR.format(name="abbr")
     + r"|(?<!\d\.)\b(?P<month_num>\d{1,2})(?P<sep>[/\-])(?P<day_num>\d{1,2})"
     r"(?:(?P=sep)(?P<year_num>\d+)(?!\.\d)"

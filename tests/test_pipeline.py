@@ -310,3 +310,10 @@ def test_vendor_deadline_does_not_replace_a_passed_event(ocr_text):
     )
     assert result.event_date == "2026-10-10"
     assert result.status == "explicit_past_date"
+
+
+def test_ocr_glued_at_and_time_is_an_inferred_date(ocr_text):
+    result = ocr_text("Saturday, October 31at6 PM", today=date(2026, 10, 12))
+    assert result.event_date == "2026-10-31"
+    assert result.status == "inferred_year"
+    assert result.needs_review is True
