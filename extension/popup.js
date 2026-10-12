@@ -226,6 +226,20 @@ function showFlyerName(filename) {
   document.getElementById("filename").textContent = filename ?? "";
 }
 
+// Whether a result has a real YYYY-MM-DD date to confirm. A flyer with no
+// readable date, or one whose date is not a real calendar day, has none.
+function hasValidEventDate(result) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(result.eventDate ?? "");
+
+  if (!match) {
+    return false;
+  }
+
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 // Switch the event date between the read-only span and the edit field.
 function setEditing(editing) {
   document.getElementById("event-date").hidden = editing;
@@ -239,9 +253,12 @@ function setEditing(editing) {
   // old date, so Accept waits until the edit is saved. Once the review has
   // settled - "accepted", or "edited" with a date the user chose - there is
   // nothing left to accept, and accepting anyway would relabel a corrected
-  // date as if it were the one the pipeline read.
+  // date as if it were the one the pipeline read. With no valid date there is
+  // nothing to confirm either: Edit is the way forward.
   document.getElementById("accept").disabled =
-    editing || reviewedResult.reviewStatus !== REVIEW_PENDING;
+    editing ||
+    reviewedResult.reviewStatus !== REVIEW_PENDING ||
+    !hasValidEventDate(reviewedResult);
 
   // Calendar output is available only after the user reviews the result, and
   // not while a date is being edited: the edit is unsaved until Save, so the
@@ -266,7 +283,8 @@ function renderResult(result) {
     "result",
     `review-${result.reviewStatus}`,
     result.needsReview ? "is-uncertain" : "",
-  ].join(" ").trim();
+    hasValidEventDate(result) ? "" : "has-no-date",
+  ].filter(Boolean).join(" ");
 
   document.getElementById("needs-review").textContent =
     result.needsReview ? "Yes" : "No";
