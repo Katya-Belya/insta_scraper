@@ -184,7 +184,8 @@ replace it. Accept date is unavailable when there is no valid date to confirm
 (no date found, or not a real calendar day); Edit date is the way forward then.
 The popup shows and edits dates as `MM-DD-YYYY`; storage, Google Calendar
 and the ICS file keep `YYYY-MM-DD`. Save date accepts only a real calendar
-date in `MM-DD-YYYY` form and otherwise keeps the edit open. Once a corrected date is saved, the date the pipeline
+date written month-day-year with hyphens (`4-2-2027` or `04-02-2027`; the
+year must have four digits) and otherwise keeps the edit open. Once a corrected date is saved, the date the pipeline
 read and its status explanation move into a collapsed **Original extraction**
 section (a warning there is labelled "Original extraction warning"); pending
 and accepted results keep their warnings in view.

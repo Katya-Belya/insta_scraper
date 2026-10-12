@@ -884,6 +884,52 @@ test("saving the same date the pipeline read is not a correction", async () => {
   assert.deepStrictEqual(originalExtraction(popup), { open: true, collapsed: false });
 });
 
+test("4-2-2027 is saved as April 2, 2027 and shown as 04-02-2027", async () => {
+  const { browser, popup } = await editingPopup();
+
+  popup.elements["event-date-input"].value = "4-2-2027";
+  popup.elements["save"].click();
+  await flush();
+
+  assert.strictEqual(popup.elements["message"].textContent, "Saved!");
+  assert.strictEqual(popup.elements["event-date"].textContent, "04-02-2027");
+  assert.strictEqual(browser.store.flyerResult.eventDate, "2027-04-02");
+  assert.strictEqual(browser.store.flyerResult.reviewStatus, "edited");
+
+  popup.elements["add-to-google-calendar"].click();
+  assert.match(browser.tabs[0], /dates=20270402%2F20270403/);
+  popup.elements["export"].click();
+  assert.strictEqual(popup.downloads[0].filename, "cherry_blossom_market_2027-04-02.ics");
+  assert.match(await popup.icsText(), /DTSTART;VALUE=DATE:20270402/);
+
+  // Editing again offers the normalized form.
+  popup.elements["edit"].click();
+  assert.strictEqual(popup.elements["event-date-input"].value, "04-02-2027");
+});
+
+for (const typed of [
+  "2-30-2027", // short form, still not a real day
+  "0-2-2027", // no month zero
+  "4-0-2027", // no day zero
+  "4-2-27", // year must have four digits
+  "004-2-2027", // at most two digits for month and day
+  "4/2/2027", // hyphens only
+  "4-2 -2027",
+]) {
+  test(`Save refuses ${JSON.stringify(typed)}`, async () => {
+    const { browser, popup } = await editingPopup();
+
+    popup.elements["event-date-input"].value = typed;
+    popup.elements["save"].click();
+    await flush();
+
+    assert.strictEqual(popup.elements["message"].textContent, INVALID_DATE_MESSAGE);
+    assert.strictEqual(popup.elements["event-date-input"].hidden, false);
+    assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+    assert.strictEqual(browser.store.flyerResult.reviewStatus, "pending");
+  });
+}
+
 const CONNECTION_ERROR =
   "Cannot reach the extractor. Reinstall the native host and reload.";
 
