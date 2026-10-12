@@ -226,10 +226,10 @@ function showFlyerName(filename) {
   document.getElementById("filename").textContent = filename ?? "";
 }
 
-// Whether a result has a real YYYY-MM-DD date to confirm. A flyer with no
-// readable date, or one whose date is not a real calendar day, has none.
-function hasValidEventDate(result) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(result.eventDate ?? "");
+// Whether a value is a real calendar date written as YYYY-MM-DD. Used both
+// for the date a result already has and for a date the user tries to save.
+function isRealCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
 
   if (!match) {
     return false;
@@ -238,6 +238,12 @@ function hasValidEventDate(result) {
   const [year, month, day] = match.slice(1).map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+// Whether a result has a real date to confirm. A flyer with no readable date,
+// or one whose date is not a real calendar day, has none.
+function hasValidEventDate(result) {
+  return isRealCalendarDate(result.eventDate);
 }
 
 // Switch the event date between the read-only span and the edit field.
@@ -262,9 +268,12 @@ function setEditing(editing) {
 
   // Calendar output is available only after the user reviews the result, and
   // not while a date is being edited: the edit is unsaved until Save, so the
-  // calendar would get the old date.
+  // calendar would get the old date. A result without a valid date has
+  // nothing to put on a calendar either.
   const calendarLocked =
-    editing || reviewedResult.reviewStatus === REVIEW_PENDING;
+    editing ||
+    reviewedResult.reviewStatus === REVIEW_PENDING ||
+    !hasValidEventDate(reviewedResult);
   document.getElementById("export").disabled = calendarLocked;
   document.getElementById("add-to-google-calendar").disabled = calendarLocked;
 }
@@ -278,12 +287,17 @@ function renderResult(result) {
   resultElement.hidden = false;
 
   // popup.css styles the review from these: the status badge, which buttons
-  // lead, and the needs-review flag.
+  // lead, the needs-review flag, and the placeholder for a missing date
+  // ("No date found") or one that is not a real day ("Invalid date").
+  const validDate = hasValidEventDate(result);
+  const invalidDate =
+    !validDate && (result.eventDate != null || pipelineStatus === "invalid_date");
   resultElement.className = [
     "result",
     `review-${result.reviewStatus}`,
     result.needsReview ? "is-uncertain" : "",
-    hasValidEventDate(result) ? "" : "has-no-date",
+    validDate ? "" : "has-no-date",
+    invalidDate ? "is-invalid-date" : "",
   ].filter(Boolean).join(" ");
 
   document.getElementById("needs-review").textContent =
@@ -308,6 +322,16 @@ function renderResult(result) {
   const statusElement = document.getElementById("status");
   statusElement.textContent = explanation.text;
   statusElement.className = explanation.warning ? "is-warning" : "";
+
+  // Once the user has corrected the date, a warning describes what the
+  // pipeline read, not the corrected date, so it is labelled as such.
+  const correctedWarning =
+    explanation.warning &&
+    result.reviewStatus === REVIEW_EDITED &&
+    dateWasChanged;
+  document.getElementById("status-label").textContent = correctedWarning
+    ? "Original extraction warning"
+    : "";
 
   document.getElementById("review-status").textContent = result.reviewStatus;
 
@@ -549,6 +573,14 @@ document.getElementById("save").addEventListener("click", () => {
   // An empty field would wipe the date, so the edit stays open instead.
   if (!correctedDate) {
     document.getElementById("message").textContent = "Enter an event date.";
+    return;
+  }
+
+  // Only a real calendar date can be saved - the same check Accept uses - so
+  // a typo never reaches the calendar. The edit stays open to fix it.
+  if (!isRealCalendarDate(correctedDate)) {
+    document.getElementById("message").textContent =
+      "Enter a valid date in YYYY-MM-DD format.";
     return;
   }
 

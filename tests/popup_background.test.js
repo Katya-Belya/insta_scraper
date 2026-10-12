@@ -39,6 +39,7 @@ const ELEMENT_IDS = [
   "original-event-date-row",
   "original-event-date",
   "status-row",
+  "status-label",
   "status",
   "needs-review",
   "review-status",
@@ -537,6 +538,124 @@ test("a pending result with a valid date can still be accepted", async () => {
 
   assert.strictEqual(popup.elements["accept"].disabled, false);
   assert.doesNotMatch(popup.elements["result"].className, /has-no-date/);
+});
+
+const INVALID_DATE_MESSAGE = "Enter a valid date in YYYY-MM-DD format.";
+
+// Open a popup on an extracted result and start editing its date.
+async function editingPopup(result = OK_RESULT) {
+  const browser = createBrowser({ host: { respond: () => hostResult(result) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(result.filename);
+  popup.elements["edit"].click();
+  return { browser, popup };
+}
+
+for (const [name, typed] of [
+  ["malformed text", "March 3"],
+  ["an impossible date", "2027-02-30"],
+]) {
+  test(`Save refuses ${name} and keeps editing open`, async () => {
+    const { browser, popup } = await editingPopup();
+
+    popup.elements["event-date-input"].value = typed;
+    popup.elements["save"].click();
+    await flush();
+
+    assert.strictEqual(popup.elements["message"].textContent, INVALID_DATE_MESSAGE);
+    assert.strictEqual(popup.elements["event-date-input"].hidden, false);
+    assert.strictEqual(popup.elements["save"].hidden, false);
+    assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+
+    // Nothing was saved: the stored review is still the pending original.
+    assert.strictEqual(browser.store.flyerResult.eventDate, "2027-03-27");
+    assert.strictEqual(browser.store.flyerResult.reviewStatus, "pending");
+  });
+}
+
+test("a valid correction after a refused one is saved", async () => {
+  const { browser, popup } = await editingPopup();
+
+  popup.elements["event-date-input"].value = "2027-13-01";
+  popup.elements["save"].click();
+  await flush();
+  assert.strictEqual(popup.elements["message"].textContent, INVALID_DATE_MESSAGE);
+
+  popup.elements["event-date-input"].value = "2027-03-28";
+  popup.elements["save"].click();
+  await flush();
+
+  assert.strictEqual(popup.elements["message"].textContent, "Saved!");
+  assert.strictEqual(popup.elements["event-date-input"].hidden, true);
+  assert.strictEqual(browser.store.flyerResult.eventDate, "2027-03-28");
+  assert.strictEqual(browser.store.flyerResult.reviewStatus, "edited");
+  assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
+
+  popup.elements["add-to-google-calendar"].click();
+  assert.match(browser.tabs[0], /dates=20270328%2F20270329/);
+});
+
+test("a stored edited result with an invalid date keeps the calendar off", async () => {
+  const browser = createBrowser({
+    seed: {
+      flyerResult: {
+        filename: "older.jpg",
+        originalEventDate: "2027-03-27",
+        eventDate: "March 3",
+        needsReview: false,
+        reviewStatus: "edited",
+      },
+    },
+    host: { respond: () => null },
+  });
+  const popup = browser.openPopup();
+  await flush();
+
+  assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+  assert.match(popup.elements["result"].className, /is-invalid-date/);
+});
+
+test("an invalid date is marked Invalid date, a missing one No date found", async () => {
+  const invalid = { filename: "feb30.jpg", eventDate: null, status: "invalid_date", needsReview: true };
+  const missing = { filename: "blurry.jpg", eventDate: null, status: "no_date_found", needsReview: true };
+
+  const { popup: invalidPopup } = await editingPopup(invalid);
+  assert.match(invalidPopup.elements["result"].className, /is-invalid-date/);
+
+  const { popup: missingPopup } = await editingPopup(missing);
+  assert.match(missingPopup.elements["result"].className, /has-no-date/);
+  assert.doesNotMatch(missingPopup.elements["result"].className, /is-invalid-date/);
+});
+
+test("a warning shown after a correction is labelled as the original's", async () => {
+  const { popup } = await editingPopup(PAST_RESULT);
+
+  // Before the correction the warning is about the date on screen.
+  assert.strictEqual(popup.elements["status-label"].textContent, "");
+
+  popup.elements["event-date-input"].value = "2027-03-27";
+  popup.elements["save"].click();
+  await flush();
+
+  assert.strictEqual(
+    popup.elements["status-label"].textContent,
+    "Original extraction warning"
+  );
+  assert.match(popup.elements["status"].textContent, /already passed/);
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+});
+
+test("an accepted warning keeps no original-extraction label", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(PAST_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(PAST_RESULT.filename);
+  popup.elements["accept"].click();
+  await flush();
+
+  assert.strictEqual(popup.elements["status-label"].textContent, "");
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
 });
 
 const CONNECTION_ERROR =

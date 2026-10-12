@@ -37,6 +37,7 @@ const ELEMENT_IDS = [
   "original-event-date-row",
   "original-event-date",
   "status-row",
+  "status-label",
   "status",
   "needs-review",
   "review-status",
