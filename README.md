@@ -51,15 +51,15 @@ The normalization step converts extracted dates into a consistent machine-readab
 
 ## V1 Workflow
 
-One flyer, one reviewed date, one calendar file, all from the Chrome popup:
+One flyer, one reviewed date, one calendar entry, all from the Chrome popup:
 
 ```text
 Select Flyer  ->  Native Messaging  ->  pipeline  ->  reviewed result
- (popup)          (src/native_host.py)  (src/*.py)    (Accept / Edit)
-                                                            |
-                                                            v
-                                                  Export to Calendar
-                                                   (reviewed_events.ics)
+ (popup)          (src/native_host.py)  (src/*.py)    (Accept date / Edit date)
+                                                                |
+                                                                v
+                                                     Add to Google Calendar
+                                                     or Download .ics file
 ```
 
 The extension cannot run Tesseract, so the popup hands the flyer to a Python
@@ -179,9 +179,14 @@ whole date rather than being guessed or dropped. The 90-day warning threshold is
 `DISTANT_INFERRED_DAYS` in `src/pipeline.py`; the 366-day one for printed dates
 is `DISTANT_EXPLICIT_DAYS`. Both only warn - the date is never rejected.
 
-**Accept** confirms the extracted date, **Edit** and **Save** replace it, and
-**Export to Calendar** writes `reviewed_events.ics` from the reviewed
-`eventDate`. Only `accepted` and `edited` results can be exported.
+**Accept date** confirms the extracted date, and **Edit date** and **Save date**
+replace it. Accept date is unavailable when there is no valid date to confirm
+(no date found, or not a real calendar day); Edit date is the way forward then.
+**Add to Google Calendar** opens a prefilled all-day event and
+**Download .ics file** writes `reviewed_events.ics`, both from the saved
+reviewed `eventDate`. Both stay disabled until the result is `accepted` or
+`edited`, and while a date is being edited. **Clear results** removes the
+stored result.
 
 The command-line runner still works as it did: `python -m src.pipeline <path>`
 writes `results.csv` and `extension/latest_result.js`, and a popup opened after
@@ -194,10 +199,18 @@ pytest
 node tests/popup_flyer_input.test.js
 node tests/popup_review.test.js
 node tests/ics.test.js
+node tests/popup_background.test.js
 ```
 
 The extension tests stub the native host, and `tests/test_native_host.py`
 stubs `src.pipeline`, so neither needs a registered host or an OCR install.
+`tests/popup_background.test.js` runs `popup.js` and `background.js` together
+over mocked storage and a mocked native port.
+
+Known issue: `tests/popup_flyer_input.test.js` and `tests/popup_review.test.js`
+currently fail. `tests/popup_harness.js` predates the background extraction
+worker and does not stub `chrome.storage.onChanged` or
+`chrome.runtime.sendMessage`, so the popup cannot load in it.
 
 ## Key Findings
 

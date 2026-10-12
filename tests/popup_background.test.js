@@ -473,6 +473,72 @@ test("warning explanations stay visible after the date is accepted", async () =>
   assert.match(popup.elements["result"].className, /is-uncertain/);
 });
 
+for (const [name, result] of [
+  ["no date was found", { filename: "blurry.jpg", eventDate: null, status: "no_date_found", needsReview: true }],
+  ["the date is not a real day", { filename: "feb30.jpg", eventDate: null, status: "invalid_date", needsReview: true }],
+]) {
+  test(`Accept is off and Edit leads when ${name}`, async () => {
+    const browser = createBrowser({ host: { respond: () => hostResult(result) } });
+    const popup = browser.openPopup();
+    await flush();
+    await popup.selectFlyer(result.filename);
+
+    assert.strictEqual(popup.elements["review-status"].textContent, "pending");
+    assert.strictEqual(popup.elements["accept"].disabled, true);
+    assert.strictEqual(popup.elements["edit"].disabled, false);
+    assert.strictEqual(popup.elements["edit"].hidden, false);
+    assert.match(popup.elements["result"].className, /has-no-date/);
+    assert.deepStrictEqual(calendarState(popup), { google: true, ics: true });
+
+    // A click on the disabled Accept changes nothing.
+    popup.elements["accept"].click();
+    await flush();
+    assert.strictEqual(browser.store.flyerResult.reviewStatus, "pending");
+
+    // Entering a date through Edit is what unlocks the calendar.
+    popup.elements["edit"].click();
+    popup.elements["event-date-input"].value = "2027-06-12";
+    popup.elements["save"].click();
+    await flush();
+
+    assert.strictEqual(browser.store.flyerResult.reviewStatus, "edited");
+    assert.doesNotMatch(popup.elements["result"].className, /has-no-date/);
+    assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
+    popup.elements["add-to-google-calendar"].click();
+    assert.match(browser.tabs[0], /dates=20270612%2F20270613/);
+  });
+}
+
+test("a restored pending date that is not a real day cannot be accepted", async () => {
+  const browser = createBrowser({
+    seed: {
+      flyerResult: {
+        filename: "restored.jpg",
+        originalEventDate: "2027-02-30",
+        eventDate: "2027-02-30",
+        needsReview: true,
+        reviewStatus: "pending",
+      },
+    },
+    host: { respond: () => null },
+  });
+  const popup = browser.openPopup();
+  await flush();
+
+  assert.strictEqual(popup.elements["accept"].disabled, true);
+  assert.strictEqual(popup.elements["edit"].disabled, false);
+});
+
+test("a pending result with a valid date can still be accepted", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(OK_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(OK_RESULT.filename);
+
+  assert.strictEqual(popup.elements["accept"].disabled, false);
+  assert.doesNotMatch(popup.elements["result"].className, /has-no-date/);
+});
+
 const CONNECTION_ERROR =
   "Cannot reach the extractor. Reinstall the native host and reload.";
 

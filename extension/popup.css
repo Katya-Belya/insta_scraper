@@ -413,8 +413,22 @@ button:disabled {
    is settled, Edit is the only way to change it. */
 .review-accepted #accept,
 .review-edited #accept,
+.has-no-date #accept,
 .result:has(#save:not([hidden])) #accept {
   display: none;
+}
+
+/* With no valid date to confirm, Edit is the action that moves the review
+   forward, so it takes the primary style. */
+.review-pending.has-no-date #edit {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.review-pending.has-no-date #edit:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 /* ---------- Step 3: calendar ---------- */
