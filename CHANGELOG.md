@@ -250,8 +250,6 @@ download and import.
   as a separate, portable calendar option and is otherwise unchanged
 * Both calendar options stay disabled while `reviewStatus` is `pending` and
   become available once the result is `accepted` or `edited`
-* Selecting a flyer still launches the Python extractor through Native
-  Messaging; nothing has to be started by hand
 * Removed the obsolete Native Messaging ping test UI
 
 ---
