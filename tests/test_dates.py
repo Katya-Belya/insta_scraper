@@ -145,7 +145,7 @@ def test_recognises_all_twelve_months():
         "no date here",
         "MARCH27",              # no separator: \s+ is required
         "MARCH 271",            # 3-digit day: \b prevents a partial match
-        "2/17/26",              # two-digit year: the whole date is rejected
+        "2/17/226",             # three-digit year: the whole date is rejected
     ],
 )
 def test_returns_none_when_no_recognised_date(text):
@@ -482,12 +482,10 @@ def test_three_argument_constructor_still_means_no_year():
 @pytest.mark.parametrize(
     "text",
     [
-        "2/17/26",      # would otherwise risk "17/26" or a guessed century
-        "2/1/26",       # would otherwise risk the fragment "1/26" -> Jan 26
-        "12-25-26",
-        "Aug 24 '26",
-        "AUGUST 24 ’26",
-        "Aug 24 '1999",     # apostrophe form is never a year
+        "2/17/226",     # would otherwise risk "17/22" or "2/17"
+        "2/1/2",        # one-digit third part, not the fragment "1/2"
+        "Aug 24 '1999",     # an apostrophe year is exactly two digits
+        "Aug 24 '6",
         "8/24/199",         # three-digit third part
         "8/24/19999",       # five-digit third part
         "8-24-19999",
@@ -650,3 +648,164 @@ def test_printed_year_before_address_is_preserved():
     assert extract_date(
         "SEPT. 5TH 2026 3718 14TH ST NW"
     ) == ExtractedDate("September", 5, "September 5, 2026", 2026)
+
+# --- Two-digit years, period separators, and explicit past dates -----------
+#
+# Policy: an exactly two-digit printed year is always 2000 + its value. The
+# fixed reference date below is the one the past-date checks are written for.
+
+TWO_DIGIT_TODAY = date(2026, 10, 12)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("10.10.26", "2026-10-10"),
+        ("10.10.2026", "2026-10-10"),
+        ("10/10/26", "2026-10-10"),
+        ("10-10-26", "2026-10-10"),
+        ("9.12.26", "2026-09-12"),
+        ("09.12.2026", "2026-09-12"),
+        ("2/17/26", "2026-02-17"),
+        ("12-25-26", "2026-12-25"),
+        ("1/1/00", "2000-01-01"),
+        ("1.1.00", "2000-01-01"),
+        ("12/31/99", "2099-12-31"),
+        ("August 21 26", "2026-08-21"),
+        ("AUGUST 21, 26", "2026-08-21"),
+        ("August 21 '26", "2026-08-21"),
+        ("AUG 21 ’26", "2026-08-21"),
+        ("Sept. 12 '26", "2026-09-12"),
+        ("SEPT 12 26", "2026-09-12"),
+        ("AUGUST 21 00", "2000-08-21"),
+        ("AUGUST 21 99", "2099-08-21"),
+        ("AUGUST 21 26 10PM", "2026-08-21"),
+    ],
+)
+def test_two_digit_years_mean_2000_plus_their_value(text, expected):
+    [extracted] = extract_dates(text)
+    assert normalize_date(extracted, today=TWO_DIGIT_TODAY) == expected
+
+
+def test_two_digit_year_text_is_shown_with_four_digits():
+    assert extract_date("10.10.26").text == "October 10, 2026"
+    assert extract_date("1/1/00").text == "January 1, 2000"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("9.12.26", "2026-09-12"),         # a month ago
+        ("8/21/26", "2026-08-21"),
+        ("August 21 '26", "2026-08-21"),
+        ("10.11.26", "2026-10-11"),        # yesterday
+        ("1/1/00", "2000-01-01"),          # decades ago
+        ("10.10.2026", "2026-10-10"),
+    ],
+)
+def test_explicit_past_dates_are_never_rolled_forward(text, expected):
+    candidates = extract_dates(text)
+    selected = select_event_date(candidates, today=TWO_DIGIT_TODAY)
+    assert normalize_date(selected, today=TWO_DIGIT_TODAY) == expected
+
+
+def test_yearless_date_still_uses_next_occurrence():
+    extracted = extract_date("October 10")
+    assert normalize_date(extracted, today=TWO_DIGIT_TODAY) == "2027-10-10"
+    assert normalize_date(extract_date("10/13"), today=TWO_DIGIT_TODAY) == (
+        "2026-10-13"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2/30/26",      # February 30
+        "13.10.26",     # month 13
+        "4.31.26",      # April 31
+        "2.29.27",      # 2027 is not a leap year
+        "June 31 26",
+    ],
+)
+def test_invalid_two_digit_year_dates_are_not_real_dates(text):
+    extracted = extract_date(text)
+    assert extracted is None or normalize_date(
+        extracted, today=TWO_DIGIT_TODAY
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "10.10.2",          # one-digit year
+        "10.10.226",        # three-digit year
+        "10.10.20266",      # five-digit year
+        "10/10/2",
+        "10-10-226",
+        "Aug 21 '2026",     # apostrophe year must be two digits
+        "Aug 21 '2",
+        "10/10.26",         # mixed separators: never the fragment "10/10"
+        "10.10/26",         # ... nor "10/26"
+        "10.10-26",
+        "10-10.2026",
+        "8/24-2026",
+        "8/21-26",          # mixed separators: not a range, not "8/21"
+        "8-21/26",
+        "10.10.26.5",       # a version-like run, not a date
+        "1.2.3.4",
+    ],
+)
+def test_malformed_year_suffixes_extract_nothing(text):
+    assert extract_dates(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "10.10",            # time, price or version: periods need a year
+        "$10.50",
+        "doors 7.30",
+    ],
+)
+def test_period_numbers_without_a_year_are_not_dates(text):
+    assert extract_dates(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "AUG 21 10 PM",
+        "AUG 21, 10 - 2PM",
+        "AUG 21, 22 & 23",
+        "AUG 21 18+",
+        "AUGUST 21 10:00",
+        "AUGUST 21 7 - 10",
+    ],
+)
+def test_two_digits_followed_by_a_time_or_list_are_not_a_year(text):
+    assert extract_date(text) == ExtractedDate("August", 21, "August 21")
+
+
+def test_mixed_separator_suffix_rejects_whole_expression():
+    """8/21-26 is malformed: the year is never dropped to leave August 21."""
+    assert extract_dates("CLUB OSCURO 8/21-26 10PM") == []
+    # A time or a second date after a hyphen is still not part of the date.
+    assert extract_date("8/4-10pm").text == "August 4"
+    assert [d.text for d in extract_dates("8/4-8/6")] == ["August 4", "August 6"]
+
+
+def test_vendor_deadline_and_event_date_are_both_candidates():
+    """
+    A Funset-style flyer: the event and an earlier vendor deadline. Both are
+    printed with years, so both are kept as printed; once both have passed
+    the most recent - the event - is selected, and before the deadline the
+    nearest - the deadline - is (documented limitation, not changed here).
+    """
+    text = "SAVE THE DATE 10.10.26 VENDOR APPLICATIONS DUE 9.10.26"
+    candidates = extract_dates(text)
+    assert [c.text for c in candidates] == [
+        "October 10, 2026",
+        "September 10, 2026",
+    ]
+    selected = select_event_date(candidates, today=TWO_DIGIT_TODAY)
+    assert normalize_date(selected, today=TWO_DIGIT_TODAY) == "2026-10-10"

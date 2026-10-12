@@ -10,29 +10,44 @@ The module separates three responsibilities:
 3. Normalize a selected month/day to a calendar date.
 
 Matches full month names, abbreviated month names (with optional trailing
-period and flexible punctuation/spacing), and numeric month/day forms
-(M/D and M-D), each with an optional printed year.
+period and flexible punctuation/spacing), and numeric month/day forms, each
+with an optional printed year. Numeric dates are read month first.
+
+Numeric dates:
+  - M/D and M-D, with or without a year: "8/24", "8-24", "8/24/2026", "8-24-26".
+  - M.D.Y with periods, only when the year is present: "10.10.26",
+    "10.10.2026". A bare "10.10" is far more often a time, a price or a
+    version number than a date, so it is not matched.
+  - The separators must agree. A number attached with a different separator
+    ("10/10.26", "10.10/26", "8/24-2026", "8/21-26") rejects the whole date
+    instead of leaving a misleading yearless fragment such as "10/26" or
+    "8/21". Only a time glued to the number ("8/4-10pm", "8/4-10:30") or a
+    second date ("8/4-8/6") may follow; the first date is then kept.
 
 Explicit years:
   - Any four-digit year that datetime.date supports (0001-9999) is kept
     exactly as printed, past or future: "AUGUST 24, 1999", "Aug. 24 2026",
     "8/24/1999", "8-24-2026". A past year is flagged for review downstream;
     it is never dropped or moved.
+  - An exactly two-digit year always means 2000 + its value: "00" -> 2000,
+    "26" -> 2026, "99" -> 2099. This applies to numeric dates ("2/17/26",
+    "10.10.26"), to month-name dates ("AUGUST 21 26", "Aug 21, 26") and to
+    the apostrophe form ("Aug 21 '26"). A two-digit year that puts the date
+    in the past is kept and flagged for review, exactly like a four-digit one.
   - Month-name dates take the year after the day. Numeric dates take it as a
     third part using the same separator as the first two.
-  - Two-digit years are deliberately NOT interpreted. "2/17/26" and
-    "Aug 24 '26" are rejected as a whole: guessing a century would turn an OCR
-    misread into a confident date, and dropping the year would turn a dated
-    flyer into a yearless one.
-  - Any other year-shaped suffix also rejects the whole date rather than
-    leaving a yearless fragment: a numeric third part that is not exactly
-    four digits ("8/24/199", "8/24/19999"), a run of five or more digits after
-    a month-name date ("AUGUST 24, 19999"), or the year 0000, which
-    datetime.date cannot represent.
-  - One to three digits after a month-name date ("MARCH 27, 10 - 2PM") are
-    left alone rather than read as a year, because flyers commonly follow the
-    date with a time. That date is treated as yearless, which always requires
-    review. So is a four-digit run glued to letters ("MARCH 27 1030PM").
+  - Any other year-shaped suffix rejects the whole date rather than leaving a
+    yearless fragment: a numeric third part that is not two or four digits
+    ("8/24/199", "8/24/19999"), an apostrophe year that is not two digits
+    ("Aug 24 '2026"), a run of five or more digits after a month-name date
+    ("AUGUST 24, 19999"), or the year 0000, which datetime.date cannot
+    represent.
+  - Two digits after a month-name date that are followed by a time or list
+    marker ("MARCH 27, 10 - 2PM", "AUG 21 10 PM", "AUG 21, 22 & 23", "AUG 21
+    18+") are not a year; that date is treated as yearless. So are one or
+    three digits ("MARCH 27, 7 - 10", "SEPT 5 123 MAIN"), and a four-digit run
+    glued to letters ("MARCH 27 1030PM"). A yearless date always requires
+    review.
 """
 
 from datetime import MAXYEAR, MINYEAR, date
@@ -63,8 +78,8 @@ _ABBR = "|".join([*(name[:3] for name in MONTHS), "SEPT"])
 
 # Optional year after a month-name date. Every digit run is captured in full,
 # so a malformed year cannot be half-read; _named_year() decides what it is.
-# An apostrophe form ("AUG 24 '26") is captured only so the whole date can be
-# rejected.
+# An apostrophe form ("AUG 24 '26") is captured separately because it is
+# unambiguously a year, so it skips the time/list check plain digits get.
 _NAMED_YEAR = (
     r"(?:\s*[,.]?\s*(?P<{name}_year>\d+)\b"
     r"|\s*['\u2019](?P<{name}_short_year>\d+)\b)?"
@@ -75,18 +90,25 @@ _NAMED_YEAR = (
 #   APR 25 / APR. 25 / AUG.12           (abbrev, optional period, flexible space)
 #   AUGUST 24, 2026 / AUG 24 2026       (month name with a printed year)
 #   (8/4) / 8-4                         (numeric month/day, no year)
-#   8/24/2026 / 8-24-2026               (numeric with a printed year)
+#   8/24/2026 / 8-24-26                 (numeric with a printed year)
+#   10.10.26 / 10.10.2026               (periods: only with a printed year)
 #
 # A numeric third part is always consumed in full (\d+), whatever its length,
-# so "2/17/26" can never be re-read as the yearless fragment "17/26" or
-# "1/26". _extracted_date_from_match decides whether that part is a usable year.
+# so "2/17/226" can never be re-read as the yearless fragment "17/22" or
+# "1/22". _extracted_date_from_match decides whether that part is a usable year.
+#
+# The numeric forms refuse to start right after "<digit>." so that the tail of
+# a mixed-separator date ("10.10/26", "10.10-26") is never read as "10/26".
 DATE_RE = re.compile(
     rf"\b({_FULL})[\s.,:;()\-]+(?P<day_full>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
     + _NAMED_YEAR.format(name="full")
     + rf"|\b(?P<month_abbr>{_ABBR})\.?\s*(?P<day_abbr>\d{{1,2}})(?:ST|ND|RD|TH|T)?\b"
     + _NAMED_YEAR.format(name="abbr")
-    + r"|\b(?P<month_num>\d{1,2})(?P<sep>[/\-])(?P<day_num>\d{1,2})"
-    r"(?:(?P=sep)(?P<year_num>\d+)|(?!\d)(?!(?P=sep)\d))",
+    + r"|(?<!\d\.)\b(?P<month_num>\d{1,2})(?P<sep>[/\-])(?P<day_num>\d{1,2})"
+    r"(?:(?P=sep)(?P<year_num>\d+)(?!\.\d)"
+    r"|(?!\d)(?!(?P=sep)\d)(?![/\-.]\d+(?![\d/\-.:A-Z])))"
+    + r"|(?<!\d\.)\b(?P<month_dot>\d{1,2})\.(?P<day_dot>\d{1,2})\.(?P<year_dot>\d+)"
+    r"(?!\d)(?!\.\d)",
     flags=re.IGNORECASE,
 )
 
@@ -156,9 +178,24 @@ def _four_digit_year(year_text: str):
     return year if MINYEAR <= year <= MAXYEAR else _REJECT
 
 
+def _two_digit_year(year_text: str) -> int:
+    """A two-digit printed year: always 2000 + its value ("00" -> 2000)."""
+    return 2000 + int(year_text)
+
+
+# What may follow two digits after a month-name date when those digits are a
+# time or another day rather than a year: "MARCH 27, 10 - 2PM",
+# "AUG 21 10 PM", "AUG 21, 22 & 23", "AUG 21 18+".
+_NOT_A_TWO_DIGIT_YEAR = re.compile(
+    r"\s*(?:[:\-\u2013\u2014&+]|,\s*\d"
+    r"|(?:AM|PM|A\.M|P\.M|AND|TO|TIL|TILL|UNTIL|THRU|THROUGH|[AP])\b)",
+    flags=re.IGNORECASE,
+)
+
+
 def _named_year(year_text: Optional[str], following_text: str = ""):
     """Interpret a possible year after a month-name date."""
-    if year_text is None or len(year_text) <= 3:
+    if year_text is None or len(year_text) in (1, 3):
         return None
 
     # A number followed by a numbered street is an address number,
@@ -171,9 +208,18 @@ def _named_year(year_text: Optional[str], following_text: str = ""):
     ):
         return None
 
+    if len(year_text) == 2:
+        if _NOT_A_TWO_DIGIT_YEAR.match(following_text):
+            return None
+        return _two_digit_year(year_text)
     if len(year_text) == 4:
         return _four_digit_year(year_text)
     return _REJECT
+
+
+def _apostrophe_year(year_text: str):
+    """An apostrophe year ("'26") must be exactly two digits."""
+    return _two_digit_year(year_text) if len(year_text) == 2 else _REJECT
 
 
 def _numeric_year(year_text: Optional[str]):
@@ -181,10 +227,12 @@ def _numeric_year(year_text: Optional[str]):
     Interpret the third part of a numeric date.
 
     Returns the year, None when there is no third part, or _REJECT for
-    anything that is not a four-digit year ("2/17/26", "8/24/19999").
+    anything that is not a two- or four-digit year ("8/24/199", "8/24/19999").
     """
     if year_text is None:
         return None
+    if len(year_text) == 2:
+        return _two_digit_year(year_text)
     if len(year_text) == 4:
         return _four_digit_year(year_text)
     return _REJECT
@@ -194,12 +242,13 @@ def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
     """
     Turn one regex match into an ExtractedDate.
 
-    DATE_RE recognizes three possible forms:
+    DATE_RE recognizes four possible forms:
         1. Full month:       AUGUST 27
         2. Abbreviation:     AUG. 27
         3. Numeric:          8/27
+        4. Numeric, periods: 8.27.26
 
-    This helper converts all three forms into the same ExtractedDate
+    This helper converts all four forms into the same ExtractedDate
     representation so the rest of the pipeline can treat them identically.
     """
 
@@ -208,24 +257,32 @@ def _extracted_date_from_match(match: re.Match) -> Optional[ExtractedDate]:
         month_name = _canonical_month_name(match.group(1))
         day = int(match.group("day_full"))
         if match.group("full_short_year") is not None:
-            return None  # Apostrophe year: reject the whole date.
-        year_text = match.group("full_year")
-        year = _named_year(
-            year_text,
-            match.string[match.end("full_year"):] if year_text else "",
-        )
+            year = _apostrophe_year(match.group("full_short_year"))
+        else:
+            year_text = match.group("full_year")
+            year = _named_year(
+                year_text,
+                match.string[match.end("full_year"):] if year_text else "",
+            )
 
     # Abbreviated month match, such as "AUG. 27" or "SEPT. 5TH".
     elif match.group("month_abbr") is not None:
         month_name = _canonical_month_name(match.group("month_abbr"))
         day = int(match.group("day_abbr"))
         if match.group("abbr_short_year") is not None:
-            return None  # Apostrophe year: reject the whole date.
-        year_text = match.group("abbr_year")
-        year = _named_year(
-            year_text,
-            match.string[match.end("abbr_year"):] if year_text else "",
-        )
+            year = _apostrophe_year(match.group("abbr_short_year"))
+        else:
+            year_text = match.group("abbr_year")
+            year = _named_year(
+                year_text,
+                match.string[match.end("abbr_year"):] if year_text else "",
+            )
+
+    # Numeric match with periods, such as "10.10.26" or "10.10.2026".
+    elif match.group("month_dot") is not None:
+        month_name = _month_name_from_number(int(match.group("month_dot")))
+        day = int(match.group("day_dot"))
+        year = _numeric_year(match.group("year_dot"))
 
     # Numeric match, such as "8/27", "8-27" or "8/27/2026".
     else:
