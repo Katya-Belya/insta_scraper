@@ -240,18 +240,21 @@ extractor itself.
 A reviewed event can now go straight into Google Calendar, with no file to
 download and import.
 
-* Added an **Add to Google Calendar** button to the popup for `accepted` and
-  `edited` results
-* Google Calendar receives the final reviewed `eventDate`, including any
-  correction made by the user, not the date OCR originally read
-* While `reviewStatus` is `pending`, both calendar options are disabled until
-  the user reviews the date
-* Renamed **Export to Calendar** to **Export ICS**, so its label says it
-  downloads a calendar file; the download itself is unchanged
+* Added an **Add to Google Calendar** button that opens a prefilled Google
+  Calendar event URL in a new tab
+* Google Calendar receives the reviewed `eventDate`, including any correction
+  made by the user, not the date the pipeline originally read
+* The event is created as an all-day event, and the flyer's filename is
+  temporarily used as its title
+* Renamed **Export to Calendar** to **Export ICS**; the `.ics` download is kept
+  as a separate, portable calendar option and is otherwise unchanged
+* Both calendar options stay disabled while `reviewStatus` is `pending` and
+  become available once the result is `accepted` or `edited`
+* Selecting a flyer still launches the Python extractor through Native
+  Messaging; nothing has to be started by hand
 * Removed the obsolete Native Messaging ping test UI
 
 ---
-
 
 ## Current Status
 
