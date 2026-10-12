@@ -36,6 +36,7 @@ const ELEMENT_IDS = [
   "result",
   "event-date",
   "event-date-input",
+  "original-extraction",
   "original-event-date-row",
   "original-event-date",
   "status-row",
@@ -212,6 +213,7 @@ function createBrowser({ host, seed = {} } = {}) {
     elements["save"].hidden = true;
     elements["event-date-input"].hidden = true;
     elements["original-event-date-row"].hidden = true;
+    elements["original-extraction"].open = true;
     for (const id of ["export", "add-to-google-calendar", "clear-results"]) {
       elements[id].disabled = true;
     }
@@ -798,6 +800,88 @@ test("04-02-2027 displays and exports as April 2, 2027; 02-30-2027 is refused", 
   assert.strictEqual(reopened.elements["event-date"].textContent, "04-02-2027");
   reopened.elements["edit"].click();
   assert.strictEqual(reopened.elements["event-date-input"].value, "04-02-2027");
+});
+
+const originalExtraction = (popup) => ({
+  open: popup.elements["original-extraction"].open,
+  collapsed: /is-collapsed/.test(popup.elements["original-extraction"].className),
+});
+
+test("a pending warning stays open and inline", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(PAST_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(PAST_RESULT.filename);
+
+  assert.deepStrictEqual(originalExtraction(popup), { open: true, collapsed: false });
+  assert.match(popup.elements["status"].textContent, /already passed/);
+  assert.strictEqual(popup.elements["status-row"].hidden, false);
+
+  // A refused save is not a correction: the warning stays in view.
+  popup.elements["edit"].click();
+  popup.elements["event-date-input"].value = "02-30-2027";
+  popup.elements["save"].click();
+  await flush();
+  assert.deepStrictEqual(originalExtraction(popup), { open: true, collapsed: false });
+});
+
+test("an accepted warning stays open and inline", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(PAST_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(PAST_RESULT.filename);
+  popup.elements["accept"].click();
+  await flush();
+
+  assert.deepStrictEqual(originalExtraction(popup), { open: true, collapsed: false });
+});
+
+test("a saved correction collapses the original extraction, keeping its data", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(PAST_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(PAST_RESULT.filename);
+  popup.elements["edit"].click();
+  popup.elements["event-date-input"].value = "03-27-2027";
+  popup.elements["save"].click();
+  await flush();
+
+  assert.deepStrictEqual(originalExtraction(popup), { open: false, collapsed: true });
+
+  // The main card shows the corrected date and the Edited status.
+  assert.strictEqual(popup.elements["event-date"].textContent, "03-27-2027");
+  assert.strictEqual(popup.elements["review-status"].textContent, "edited");
+
+  // Inside the collapsed section, nothing is lost.
+  assert.strictEqual(popup.elements["original-event-date-row"].hidden, false);
+  assert.strictEqual(popup.elements["original-event-date"].textContent, "03-27-2026");
+  assert.match(popup.elements["status"].textContent, /already passed/);
+  assert.strictEqual(popup.elements["status"].className, "is-warning");
+  assert.strictEqual(popup.elements["status-label"].textContent, "Original extraction warning");
+  assert.strictEqual(browser.store.flyerResult.originalEventDate, "2026-03-27");
+  assert.strictEqual(browser.store.flyerResult.needsReview, true);
+
+  // Calendar behaviour is unchanged.
+  assert.deepStrictEqual(calendarState(popup), { google: false, ics: false });
+
+  // Reopening restores the same collapsed view.
+  const reopened = browser.openPopup();
+  await flush();
+  assert.deepStrictEqual(originalExtraction(reopened), { open: false, collapsed: true });
+  assert.match(reopened.elements["status"].textContent, /already passed/);
+});
+
+test("saving the same date the pipeline read is not a correction", async () => {
+  const browser = createBrowser({ host: { respond: () => hostResult(PAST_RESULT) } });
+  const popup = browser.openPopup();
+  await flush();
+  await popup.selectFlyer(PAST_RESULT.filename);
+  popup.elements["edit"].click();
+  popup.elements["save"].click();
+  await flush();
+
+  assert.strictEqual(popup.elements["review-status"].textContent, "edited");
+  assert.deepStrictEqual(originalExtraction(popup), { open: true, collapsed: false });
 });
 
 const CONNECTION_ERROR =

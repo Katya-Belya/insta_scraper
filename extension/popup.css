@@ -370,6 +370,32 @@ body:has(#result:not([hidden])) .select-flyer {
 
 /* Secondary facts, collapsed by default. The status explanation above stays
    visible; only the raw needs-review flag lives here. */
+/* What the pipeline read. Inline until a correction is saved: the summary is
+   hidden and popup.js keeps the section open. */
+.original-extraction:not(.is-collapsed) > summary {
+  display: none;
+}
+
+.original-extraction.is-collapsed {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.original-extraction.is-collapsed > summary {
+  cursor: pointer;
+}
+
+.original-extraction.is-collapsed .original-date {
+  margin-top: 4px;
+}
+
+/* After a correction, "Review it below" no longer applies. Errors and
+   progress still show. */
+body:has(.original-extraction.is-collapsed) #state-message.is-success {
+  display: none;
+}
+
 .details {
   margin-top: 8px;
   color: var(--muted);
